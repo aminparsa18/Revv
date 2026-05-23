@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path="../../../Downloads/CLAUDE.md" />
+  </Folder>
+  <Project Path="Revv/Revv.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
+  <Project Path="Revv.Shared/Revv.Shared.csproj" />
+  <Project Path="Revv.Windows/Revv.Windows.csproj" />
+</Solution>

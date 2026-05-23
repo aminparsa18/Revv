@@ -1,0 +1,484 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="Revv.MainPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    BackgroundColor="#0A0A0A"
+    Shell.NavBarIsVisible="False">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <Color x:Key="AccentRed">#E8001D</Color>
+            <Color x:Key="AccentRedDim">#7A0010</Color>
+            <Color x:Key="Surface">#141414</Color>
+            <Color x:Key="SurfaceHigh">#1F1F1F</Color>
+            <Color x:Key="TextPrimary">#F0F0F0</Color>
+            <Color x:Key="TextMuted">#555555</Color>
+            <Color x:Key="ConnectedGreen">#00E87A</Color>
+
+            <Style x:Key="LabelMono" TargetType="Label">
+                <Setter Property="FontFamily" Value="RobotoMono" />
+                <Setter Property="TextColor" Value="{StaticResource TextPrimary}" />
+            </Style>
+
+            <Style x:Key="SliderStyle" TargetType="Slider">
+                <Setter Property="MinimumTrackColor" Value="{StaticResource AccentRed}" />
+                <Setter Property="MaximumTrackColor" Value="{StaticResource SurfaceHigh}" />
+                <Setter Property="ThumbColor" Value="{StaticResource TextPrimary}" />
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <!-- Root: status bar | settings (optional) | main driving area -->
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ROW 0 — Landscape status bar                            -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <Grid
+            Grid.Row="0"
+            Padding="20,12,12,8"
+            ColumnDefinitions="Auto,*,Auto,Auto"
+            ColumnSpacing="12">
+
+            <!-- App wordmark -->
+            <Label
+                Grid.Column="0"
+                FontAttributes="Bold"
+                FontSize="20"
+                Text="REVV"
+                TextColor="{StaticResource AccentRed}"
+                VerticalOptions="Center" />
+
+            <!-- Connection status pill -->
+            <Frame
+                Grid.Column="1"
+                Padding="10,3"
+                BackgroundColor="{StaticResource Surface}"
+                BorderColor="{StaticResource SurfaceHigh}"
+                CornerRadius="10"
+                HorizontalOptions="Center"
+                VerticalOptions="Center">
+                <StackLayout Orientation="Horizontal" Spacing="6">
+                    <Ellipse
+                        x:Name="StatusDot"
+                        Fill="{StaticResource TextMuted}"
+                        HeightRequest="7"
+                        VerticalOptions="Center"
+                        WidthRequest="7" />
+                    <Label
+                        x:Name="StatusLabel"
+                        FontSize="10"
+                        Style="{StaticResource LabelMono}"
+                        Text="SEARCHING..."
+                        TextColor="{StaticResource TextMuted}"
+                        VerticalOptions="Center" />
+                </StackLayout>
+            </Frame>
+
+            <!-- Pedals toggle -->
+            <StackLayout
+                Grid.Column="2"
+                Orientation="Horizontal"
+                Spacing="6"
+                VerticalOptions="Center">
+                <Label
+                    FontSize="9"
+                    Style="{StaticResource LabelMono}"
+                    Text="PEDALS"
+                    TextColor="{StaticResource TextMuted}"
+                    VerticalOptions="Center" />
+                <Switch
+                    x:Name="PedalsSwitch"
+                    IsToggled="False"
+                    OnColor="{StaticResource AccentRed}"
+                    Scale="0.85"
+                    ThumbColor="{StaticResource TextPrimary}"
+                    Toggled="OnPedalsToggled"
+                    VerticalOptions="Center" />
+            </StackLayout>
+
+            <!-- Settings toggle -->
+            <Button
+                x:Name="SettingsButton"
+                Grid.Column="3"
+                Padding="0"
+                BackgroundColor="Transparent"
+                BorderColor="Transparent"
+                Clicked="OnSettingsToggled"
+                FontSize="20"
+                HeightRequest="36"
+                Text="⚙"
+                TextColor="{StaticResource TextMuted}"
+                VerticalOptions="Center"
+                WidthRequest="36" />
+
+        </Grid>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ROW 1 — Settings panel (collapsed by default)           -->
+        <!-- Horizontal layout for landscape                         -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <Frame
+            x:Name="SettingsPanel"
+            Grid.Row="1"
+            Padding="20,12"
+            BackgroundColor="{StaticResource Surface}"
+            BorderColor="{StaticResource SurfaceHigh}"
+            CornerRadius="0"
+            IsVisible="False">
+
+            <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="24">
+
+                <!-- Sensitivity -->
+                <StackLayout Grid.Column="0" Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label
+                            Grid.Column="0"
+                            FontSize="10"
+                            Style="{StaticResource LabelMono}"
+                            Text="SENSITIVITY"
+                            TextColor="{StaticResource TextMuted}" />
+                        <Label
+                            x:Name="SensitivityValueLabel"
+                            Grid.Column="1"
+                            FontSize="10"
+                            Style="{StaticResource LabelMono}"
+                            Text="1.0"
+                            TextColor="{StaticResource AccentRed}" />
+                    </Grid>
+                    <Slider
+                        x:Name="SensitivitySlider"
+                        Maximum="3.0"
+                        Minimum="0.1"
+                        Style="{StaticResource SliderStyle}"
+                        Value="1.0"
+                        ValueChanged="OnSensitivityChanged" />
+                </StackLayout>
+
+                <!-- Steering Range -->
+                <StackLayout Grid.Column="1" Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label
+                            Grid.Column="0"
+                            FontSize="10"
+                            Style="{StaticResource LabelMono}"
+                            Text="RANGE"
+                            TextColor="{StaticResource TextMuted}" />
+                        <Label
+                            x:Name="RangeValueLabel"
+                            Grid.Column="1"
+                            FontSize="10"
+                            Style="{StaticResource LabelMono}"
+                            Text="45°"
+                            TextColor="{StaticResource AccentRed}" />
+                    </Grid>
+                    <Slider
+                        x:Name="RangeSlider"
+                        Maximum="90"
+                        Minimum="15"
+                        Style="{StaticResource SliderStyle}"
+                        Value="45"
+                        ValueChanged="OnRangeChanged" />
+                </StackLayout>
+
+                <!-- Recenter button -->
+                <Button
+                    x:Name="RecenterButton"
+                    Grid.Column="2"
+                    Padding="16,0"
+                    BackgroundColor="{StaticResource SurfaceHigh}"
+                    BorderColor="{StaticResource AccentRed}"
+                    BorderWidth="1"
+                    Clicked="OnRecenterClicked"
+                    CornerRadius="6"
+                    FontAttributes="Bold"
+                    FontSize="10"
+                    Text="RECENTER"
+                    TextColor="{StaticResource TextPrimary}"
+                    VerticalOptions="Center" />
+
+            </Grid>
+        </Frame>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- ROW 2 — Main driving area                               -->
+        <!-- Columns: [brake | steering wheel | throttle]            -->
+        <!-- Brake and throttle panels are hidden until toggled on   -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <Grid
+            Grid.Row="2"
+            ColumnDefinitions="Auto,*,Auto">
+
+            <!-- ─────────────────────────────────────────────────── -->
+            <!-- BRAKE panel (left, hidden by default)                -->
+            <!-- ─────────────────────────────────────────────────── -->
+            <Grid
+                x:Name="BrakePanel"
+                Grid.Column="0"
+                IsVisible="False"
+                WidthRequest="130">
+
+                <!-- Background (named for color change on press) -->
+                <BoxView
+                    x:Name="BrakeBg"
+                    BackgroundColor="{StaticResource Surface}"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill" />
+
+                <!-- Touch target (transparent, receives Pressed/Released) -->
+                <Button
+                    x:Name="BrakeButton"
+                    BackgroundColor="Transparent"
+                    BorderColor="Transparent"
+                    BorderWidth="0"
+                    CornerRadius="0"
+                    HorizontalOptions="Fill"
+                    Pressed="OnBrakePressed"
+                    Released="OnBrakeReleased"
+                    Text=""
+                    VerticalOptions="Fill" />
+
+                <!-- Labels (InputTransparent so touches reach the Button) -->
+                <StackLayout
+                    InputTransparent="True"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Spacing="6">
+                    <Label
+                        x:Name="BrakeIcon"
+                        FontAttributes="Bold"
+                        FontSize="36"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMono}"
+                        Text="B"
+                        TextColor="{StaticResource SurfaceHigh}" />
+                    <Label
+                        FontSize="9"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMono}"
+                        Text="BRAKE"
+                        TextColor="{StaticResource TextMuted}" />
+                    <Label
+                        x:Name="BrakeValueLabel"
+                        FontSize="11"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMono}"
+                        Text="—"
+                        TextColor="{StaticResource TextMuted}" />
+                </StackLayout>
+
+                <!-- Right edge separator -->
+                <BoxView
+                    BackgroundColor="{StaticResource SurfaceHigh}"
+                    HorizontalOptions="End"
+                    InputTransparent="True"
+                    VerticalOptions="Fill"
+                    WidthRequest="1" />
+
+            </Grid>
+
+            <!-- ─────────────────────────────────────────────────── -->
+            <!-- CENTER — Steering wheel                              -->
+            <!-- ─────────────────────────────────────────────────── -->
+            <Grid Grid.Column="1">
+
+                <!-- Steering wheel graphic (scaled for landscape height) -->
+                <Grid
+                    x:Name="WheelRoot"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center">
+
+                    <!-- Outer ring -->
+                    <Ellipse
+                        HeightRequest="180"
+                        Stroke="{StaticResource SurfaceHigh}"
+                        StrokeThickness="2"
+                        WidthRequest="180" />
+
+                    <!-- Grip — top -->
+                    <BoxView
+                        Margin="0,-77,0,0"
+                        BackgroundColor="{StaticResource AccentRed}"
+                        CornerRadius="2"
+                        HeightRequest="24"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        WidthRequest="5" />
+
+                    <!-- Grip — bottom -->
+                    <BoxView
+                        Margin="0,77,0,0"
+                        BackgroundColor="{StaticResource SurfaceHigh}"
+                        CornerRadius="2"
+                        HeightRequest="24"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        WidthRequest="5" />
+
+                    <!-- Spoke — left -->
+                    <BoxView
+                        Margin="-45,0,0,0"
+                        BackgroundColor="{StaticResource SurfaceHigh}"
+                        CornerRadius="1"
+                        HeightRequest="3"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        WidthRequest="38" />
+
+                    <!-- Spoke — right -->
+                    <BoxView
+                        Margin="45,0,0,0"
+                        BackgroundColor="{StaticResource SurfaceHigh}"
+                        CornerRadius="1"
+                        HeightRequest="3"
+                        HorizontalOptions="Center"
+                        VerticalOptions="Center"
+                        WidthRequest="38" />
+
+                    <!-- Center hub -->
+                    <Ellipse
+                        Fill="{StaticResource Surface}"
+                        HeightRequest="48"
+                        HorizontalOptions="Center"
+                        Stroke="{StaticResource AccentRed}"
+                        StrokeThickness="1.5"
+                        VerticalOptions="Center"
+                        WidthRequest="48" />
+
+                    <Label
+                        FontAttributes="Bold"
+                        FontSize="9"
+                        HorizontalOptions="Center"
+                        Text="REVV"
+                        TextColor="{StaticResource AccentRed}"
+                        VerticalOptions="Center" />
+
+                </Grid>
+
+                <!-- Steering angle readout -->
+                <Label
+                    x:Name="AngleLabel"
+                    Margin="0,0,0,10"
+                    FontSize="12"
+                    HorizontalOptions="Center"
+                    Style="{StaticResource LabelMono}"
+                    Text="0.000"
+                    TextColor="{StaticResource TextMuted}"
+                    VerticalOptions="End" />
+
+                <!-- Left indicator -->
+                <Label
+                    Margin="16,0,0,0"
+                    FontAttributes="Bold"
+                    FontSize="10"
+                    HorizontalOptions="Start"
+                    Style="{StaticResource LabelMono}"
+                    Text="◄ L"
+                    TextColor="{StaticResource TextMuted}"
+                    VerticalOptions="Center" />
+
+                <!-- Right indicator -->
+                <Label
+                    Margin="0,0,16,0"
+                    FontAttributes="Bold"
+                    FontSize="10"
+                    HorizontalOptions="End"
+                    Style="{StaticResource LabelMono}"
+                    Text="R ►"
+                    TextColor="{StaticResource TextMuted}"
+                    VerticalOptions="Center" />
+
+                <!-- Recenter hint -->
+                <Label
+                    Margin="0,8,0,0"
+                    FontSize="9"
+                    HorizontalOptions="Center"
+                    Style="{StaticResource LabelMono}"
+                    Text="DOUBLE-TAP TO RECENTER"
+                    TextColor="{StaticResource TextMuted}"
+                    VerticalOptions="Start" />
+
+                <!-- Double-tap gesture target (full area) -->
+                <Grid x:Name="TapTarget">
+                    <Grid.GestureRecognizers>
+                        <TapGestureRecognizer
+                            NumberOfTapsRequired="2"
+                            Tapped="OnDoubleTapped" />
+                    </Grid.GestureRecognizers>
+                </Grid>
+
+            </Grid>
+
+            <!-- ─────────────────────────────────────────────────── -->
+            <!-- THROTTLE panel (right, hidden by default)            -->
+            <!-- ─────────────────────────────────────────────────── -->
+            <Grid
+                x:Name="ThrottlePanel"
+                Grid.Column="2"
+                IsVisible="False"
+                WidthRequest="130">
+
+                <!-- Left edge separator -->
+                <BoxView
+                    BackgroundColor="{StaticResource SurfaceHigh}"
+                    HorizontalOptions="Start"
+                    InputTransparent="True"
+                    VerticalOptions="Fill"
+                    WidthRequest="1" />
+
+                <!-- Background -->
+                <BoxView
+                    x:Name="ThrottleBg"
+                    BackgroundColor="{StaticResource Surface}"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill" />
+
+                <!-- Touch target -->
+                <Button
+                    x:Name="ThrottleButton"
+                    BackgroundColor="Transparent"
+                    BorderColor="Transparent"
+                    BorderWidth="0"
+                    CornerRadius="0"
+                    HorizontalOptions="Fill"
+                    Pressed="OnThrottlePressed"
+                    Released="OnThrottleReleased"
+                    Text=""
+                    VerticalOptions="Fill" />
+
+                <!-- Labels -->
+                <StackLayout
+                    InputTransparent="True"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Spacing="6">
+                    <Label
+                        x:Name="ThrottleIcon"
+                        FontAttributes="Bold"
+                        FontSize="36"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMono}"
+                        Text="T"
+                        TextColor="{StaticResource SurfaceHigh}" />
+                    <Label
+                        FontSize="9"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMono}"
+                        Text="THROTTLE"
+                        TextColor="{StaticResource TextMuted}" />
+                    <Label
+                        x:Name="ThrottleValueLabel"
+                        FontSize="11"
+                        HorizontalOptions="Center"
+                        Style="{StaticResource LabelMono}"
+                        Text="—"
+                        TextColor="{StaticResource TextMuted}" />
+                </StackLayout>
+
+            </Grid>
+
+        </Grid>
+
+    </Grid>
+</ContentPage>
