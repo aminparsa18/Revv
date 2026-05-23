@@ -4,6 +4,8 @@
 
 REVV is a cross-platform mobile-to-PC steering wheel simulator. The user holds their phone like a steering wheel; the phone reads gyroscope data and streams it over LAN to a Windows PC app, which feeds it into a virtual gamepad. No hardware, no cables, no per-game configuration.
 
+**Status:** Core pipeline is end-to-end working — phone connects, signals stream, ViGEm gamepad receives steering. In-game binding is handled by the game itself (bind Left Stick X to steer); no additional key-mapping layer needed.
+
 ---
 
 ## Architecture
@@ -200,7 +202,7 @@ or replace `ImageButton` with `Text="⚙"` temporarily.
 ## Key Decisions & Rationale
 
 - **UDP over TCP:** Real-time input — a dropped frame is better than a delayed one
-- **ViGEm over key mapping:** Analog steering axis; works in every racing game without per-game config
+- **ViGEm over key mapping:** Analog steering axis; works in every racing game without per-game config. Users bind Left Stick X in-game — no SendInput/keyboard simulation layer needed
 - **Integration + clamp over Madgwick filter:** Simpler; Range setting bounds drift; passive spring handles the rest
 - **MAUI for both apps:** Single codebase; Windows app is intentionally lean
 - **UDP broadcast discovery:** Zero config, no IP typing, LAN-only
@@ -219,6 +221,7 @@ or replace `ImageButton` with `Text="⚙"` temporarily.
 - [ ] Landscape hold mode (`AngularVelocity.X` axis)
 - [ ] Settings persistence (save sliders between sessions via `Preferences`)
 - [ ] PC tray icon (minimize to tray, show connection status)
+- [ ] `icon_settings.png` in `Resources/Images/` (32×32 white gear) — currently using `Text="⚙"` as placeholder
 
 ---
 
