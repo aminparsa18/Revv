@@ -7,6 +7,7 @@ public class RevvSession : IAsyncDisposable
 {
     public RevvReceiver Receiver { get; } = new();
     public RevvGamepad Gamepad { get; } = new();
+    public ForzaTelemetryReceiver Telemetry { get; } = new();
 
     public SessionState State { get; private set; } = SessionState.Idle;
 
@@ -29,6 +30,9 @@ public class RevvSession : IAsyncDisposable
         Receiver.BrakeReceived += (_, v) => Gamepad.SetBrake(v);
         Receiver.ErrorOccurred += (_, ex) => ErrorOccurred?.Invoke(this, ex);
 
+        Telemetry.SpeedUpdated += (_, v) => Gamepad.UpdateSpeed(v);
+        Telemetry.StartAsync();
+
         State = SessionState.WaitingForPhone;
         Receiver.StartAsync();
         return Task.CompletedTask;
@@ -37,6 +41,7 @@ public class RevvSession : IAsyncDisposable
     public async Task StopAsync()
     {
         await Receiver.StopAsync();
+        await Telemetry.StopAsync();
         Gamepad.ZeroAllInputs();
         Gamepad.Disconnect();
         State = SessionState.Idle;
@@ -68,6 +73,7 @@ public class RevvSession : IAsyncDisposable
         Receiver.PhoneDisconnected -= OnPhoneDisconnected;
         Receiver.SteeringReceived -= OnSteeringReceived;
         Gamepad.Dispose();
+        await Telemetry.DisposeAsync();
     }
 }
 

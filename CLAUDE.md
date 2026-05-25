@@ -1,5 +1,25 @@
 # REVV — Project Context for Claude Code
 
+## Codebase Navigation — Use graphify-out as RAG
+
+A pre-built knowledge graph of this repo lives in `graphify-out/`. **Always consult it first** before grepping or exploring source files for architecture, dependency, or "where is X" questions.
+
+### Which file to use
+
+| Question type | File to read |
+|---|---|
+| "What are the core abstractions?" / "What touches X?" | `graphify-out/COMPASS.md` — token-optimized, start here |
+| "Which community/domain owns this?" / god nodes / bridge edges | `graphify-out/GRAPH_REPORT.md` |
+| Specific node lookup, edge traversal, programmatic queries | `graphify-out/graph.json` |
+| AI-derived architectural insights | `graphify-out/intelligence.json` |
+| Refactoring or improvement ideas | `graphify-out/suggestions.json` |
+
+### How to use it
+
+1. Read `graphify-out/COMPASS.md` first for a fast orientation.
+2. If you need community membership or cross-cutting connections, read `graphify-out/GRAPH_REPORT.md`.
+3. Only fall back to direct `Grep`/`Glob` on source files when the graph doesn't have enough detail.
+
 ## What is REVV?
 
 REVV is a cross-platform mobile-to-PC steering wheel simulator. The user holds their phone like a steering wheel; the phone reads gyroscope data and streams it over LAN to a Windows PC app, which feeds it into a virtual gamepad. No hardware, no cables, no per-game configuration.
@@ -12,7 +32,7 @@ REVV is a cross-platform mobile-to-PC steering wheel simulator. The user holds t
 
 ```
 [Revv — MAUI Android/iOS]                    [Revv.Windows — WinForms]
-  Gyroscope (AngularVelocity.Y)                UDP Listener (RevvReceiver)
+  Gyroscope (AngularVelocity.Z)                UDP Listener (RevvReceiver)
   → SteeringController                  UDP    → RevvGamepad (ViGEm)
   → Normalize -1.0 … +1.0           ─────────► → Xbox 360 Left Stick X axis
   → RevvBroadcaster → LAN                      → RevvSession (glues it all)
@@ -22,7 +42,7 @@ REVV is a cross-platform mobile-to-PC steering wheel simulator. The user holds t
 **Transport:** UDP — low latency, drop-tolerant, no stale packet queuing  
 **Discovery:** UDP broadcast — phone broadcasts `REVV_HERE:<port>` on `255.255.255.255:5554`, PC ACKs, no manual IP entry  
 **PC input:** ViGEm (`Nefarius.ViGEm.Client` NuGet) — virtual Xbox 360 controller, analog axis steering  
-**Gyro axis:** `AngularVelocity.Y` — phone held portrait, tilted sideways like a real steering wheel
+**Gyro axis:** `AngularVelocity.Z` — phone held portrait, rotated clockwise/counter-clockwise like a real steering wheel
 
 ---
 

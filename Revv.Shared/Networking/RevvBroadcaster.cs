@@ -6,7 +6,7 @@ namespace Revv.Shared.Networking;
 
 public class RevvBroadcaster : IAsyncDisposable
 {
-    public int SendRateHz { get; set; } = 60;
+    public int SendRateHz { get; set; } = 120;
 
     public BroadcasterState State { get; private set; } = BroadcasterState.Idle;
     public string? ConnectedPcIp { get; private set; }
@@ -14,15 +14,20 @@ public class RevvBroadcaster : IAsyncDisposable
     public event EventHandler<string>? Connected;
     public event EventHandler? Disconnected;
     public event EventHandler<Exception>? ErrorOccurred;
+    public event EventHandler<int>? LatencyUpdated; // smoothed RTT in ms
 
     private UdpClient? _broadcaster;
     private UdpClient? _ackListener;
     private UdpClient? _streamer;
+    private UdpClient? _echoListener;
     private CancellationTokenSource? _cts;
     private float _latestSteering = 0f;
     private float _latestThrottle = 0f;
     private float _latestBrake = 0f;
     private readonly object _steeringLock = new();
+    private float _smoothedLatencyMs = -1f;
+    private long _lastLatencyFireMs = 0;
+    private const float LatencyEmaAlpha = 0.2f;
 
     public Task StartAsync()
     {
@@ -119,6 +124,15 @@ public class RevvBroadcaster : IAsyncDisposable
         Connected?.Invoke(this, pcIp);
 
         _streamer = new UdpClient();
+        _smoothedLatencyMs = -1f;
+
+        try
+        {
+            _echoListener = new UdpClient(RevvDiscovery.EchoPort);
+            _ = ReceiveEchoesAsync(_echoListener, ct);
+        }
+        catch { /* echo unavailable — latency display stays at "—" */ }
+
         var pcEndpoint = new IPEndPoint(IPAddress.Parse(pcIp), RevvDiscovery.DataPort);
         var intervalMs = 1000 / SendRateHz;
 
@@ -134,7 +148,8 @@ public class RevvBroadcaster : IAsyncDisposable
                     brake = _latestBrake;
                 }
 
-                var packet = new RevvPacket(steering, throttle, brake).ToBytes();
+                var tick = (uint)(Environment.TickCount64 & 0xFFFFFFFFL);
+                var packet = new RevvPacket(steering, throttle, brake, tick).ToBytes();
                 await _streamer.SendAsync(packet, packet.Length, pcEndpoint);
                 await Task.Delay(intervalMs, ct);
             }
@@ -149,8 +164,41 @@ public class RevvBroadcaster : IAsyncDisposable
                 State = BroadcasterState.Idle;
                 Disconnected?.Invoke(this, EventArgs.Empty);
                 _streamer?.Close();
+                _echoListener?.Close();
+                _echoListener = null;
                 await EnterDiscoveryAsync(ct);
             }
+        }
+    }
+
+    private async Task ReceiveEchoesAsync(UdpClient echoListener, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var result = await echoListener.ReceiveAsync(ct);
+                if (result.Buffer.Length < 4) continue;
+
+                var sentTick = BitConverter.ToUInt32(result.Buffer, 0);
+                var nowTick = (uint)(Environment.TickCount64 & 0xFFFFFFFFL);
+                var rawRtt = (int)(nowTick - sentTick);
+
+                if (rawRtt < 0 || rawRtt > 2000) continue;
+
+                _smoothedLatencyMs = _smoothedLatencyMs < 0
+                    ? rawRtt
+                    : LatencyEmaAlpha * rawRtt + (1f - LatencyEmaAlpha) * _smoothedLatencyMs;
+
+                var now = Environment.TickCount64;
+                if (now - _lastLatencyFireMs >= 500)
+                {
+                    _lastLatencyFireMs = now;
+                    LatencyUpdated?.Invoke(this, (int)MathF.Round(_smoothedLatencyMs));
+                }
+            }
+            catch (OperationCanceledException) { break; }
+            catch { break; }
         }
     }
 
@@ -159,9 +207,11 @@ public class RevvBroadcaster : IAsyncDisposable
         try { _broadcaster?.Close(); } catch { }
         try { _ackListener?.Close(); } catch { }
         try { _streamer?.Close(); } catch { }
+        try { _echoListener?.Close(); } catch { }
         _broadcaster = null;
         _ackListener = null;
         _streamer = null;
+        _echoListener = null;
     }
 
     public async ValueTask DisposeAsync()

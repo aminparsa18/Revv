@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Revv.Shared;
 using Revv.Shared.Networking;
+using SkiaSharp.Views.Maui.Controls.Hosting;
 
 namespace Revv;
 
@@ -11,6 +12,7 @@ public static class MauiProgram
         var builder = MauiApp.CreateBuilder();
         builder
             .UseMauiApp<App>()
+            .UseSkiaSharp()
             .ConfigureFonts(fonts =>
             {
                 fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");

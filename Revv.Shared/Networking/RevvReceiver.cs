@@ -24,6 +24,7 @@ public class RevvReceiver : IAsyncDisposable
 
     private UdpClient? _discoveryListener;
     private UdpClient? _dataListener;
+    private UdpClient? _echoSender;
     private CancellationTokenSource? _cts;
     private DateTime _lastPacketTime = DateTime.MinValue;
 
@@ -100,6 +101,8 @@ public class RevvReceiver : IAsyncDisposable
         _lastPacketTime = DateTime.UtcNow;
 
         _dataListener = new UdpClient(RevvDiscovery.DataPort);
+        _echoSender = new UdpClient();
+        var echoEndpoint = new IPEndPoint(IPAddress.Parse(phoneIp), RevvDiscovery.EchoPort);
 
         _ = Task.Run(async () =>
         {
@@ -120,12 +123,33 @@ public class RevvReceiver : IAsyncDisposable
         {
             while (!ct.IsCancellationRequested && State == ReceiverState.Receiving)
             {
+                // Async-wait for the first available packet (efficient idle blocking)
                 var result = await _dataListener.ReceiveAsync(ct);
 
                 if (result.RemoteEndPoint.Address.ToString() != phoneIp) continue;
                 if (result.Buffer.Length < 4) continue;
 
-                var packet = RevvPacket.FromBytes(result.Buffer);
+                var latestBuffer = result.Buffer;
+
+                // Drain every packet already queued in the OS buffer — keep only the newest.
+                // This kills stale backlog instantly when the user changes direction.
+                var drainEp = new IPEndPoint(IPAddress.Any, 0);
+                while (_dataListener.Available >= RevvPacket.SizeBytes)
+                {
+                    var drainBuffer = _dataListener.Receive(ref drainEp);
+                    if (drainEp.Address.ToString() == phoneIp && drainBuffer.Length >= RevvPacket.SizeBytes)
+                        latestBuffer = drainBuffer;
+                }
+
+                // Echo the tick from the freshest packet for RTT measurement
+                if (latestBuffer.Length >= 16 && _echoSender != null)
+                {
+                    var tickBytes = new byte[4];
+                    Buffer.BlockCopy(latestBuffer, 12, tickBytes, 0, 4);
+                    _ = _echoSender.SendAsync(tickBytes, 4, echoEndpoint);
+                }
+
+                var packet = RevvPacket.FromBytes(latestBuffer);
                 LatestSteering = packet.SteeringValue;
                 LatestThrottle = packet.ThrottleValue;
                 LatestBrake = packet.BrakeValue;
@@ -156,6 +180,8 @@ public class RevvReceiver : IAsyncDisposable
 
         try { _dataListener?.Close(); } catch { }
         _dataListener = null;
+        try { _echoSender?.Close(); } catch { }
+        _echoSender = null;
 
         if (!ct.IsCancellationRequested)
             _ = EnterDiscoveryAsync(ct);
@@ -165,8 +191,10 @@ public class RevvReceiver : IAsyncDisposable
     {
         try { _discoveryListener?.Close(); } catch { }
         try { _dataListener?.Close(); } catch { }
+        try { _echoSender?.Close(); } catch { }
         _discoveryListener = null;
         _dataListener = null;
+        _echoSender = null;
     }
 
     public async ValueTask DisposeAsync()

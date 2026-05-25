@@ -1,8 +1,12 @@
-﻿namespace Revv.Shared;
+using System.Diagnostics;
+
+namespace Revv.Shared;
 
 /// <summary>
-/// Converts raw gyroscope angular velocity into a normalized steering value (-1.0 to +1.0).
-/// Designed for portrait hold: player tilts phone left/right like a steering wheel.
+/// Complementary filter steering controller.
+/// Gyroscope: fast, low-latency response.
+/// Accelerometer: long-term drift correction via atan2(X,Y).
+/// Both measure the same physical angle (Z-axis rotation held portrait toward chest).
 /// </summary>
 public class SteeringController
 {
@@ -10,90 +14,95 @@ public class SteeringController
     // User-configurable settings
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Multiplier applied to angular velocity before integration.
-    /// Higher = more responsive. Recommended range: 0.1 – 3.0. Default: 1.0.
-    /// </summary>
-    public float Sensitivity { get; set; } = 1.0f;
+    /// <summary>Multiplier on the output. Higher = full lock with less physical rotation. Default: 1.4.</summary>
+    public float Sensitivity { get; set; } = 1.4f;
 
-    /// <summary>
-    /// Maximum physical tilt angle (in degrees) that maps to full lock (±1.0).
-    /// Lower = arcade (small flick = full turn). Higher = sim (big movement needed).
-    /// Recommended range: 15 – 90. Default: 45.
-    /// </summary>
+    /// <summary>Physical rotation angle (degrees) that maps to full lock. Default: 45°.</summary>
     public float RangeDegrees { get; set; } = 45f;
 
-    /// <summary>
-    /// Minimum angular velocity (rad/s) below which input is ignored.
-    /// Filters out sensor noise when the phone is nearly still.
-    /// </summary>
-    public float DeadZone { get; set; } = 0.02f;
+    /// <summary>Output dead zone in degrees around center. Default: 0.5°.</summary>
+    public float DeadZone { get; set; } = 0.5f;
 
-    /// <summary>
-    /// Angular velocity threshold (rad/s) below which passive re-centering activates.
-    /// </summary>
-    public float RecenterThreshold { get; set; } = 0.05f;
+    /// <summary>Expo curve exponent applied before tanh. 1.0 = linear. Higher = more center precision. Default: 1.2.</summary>
+    public float SteeringExpo { get; set; } = 1.2f;
 
-    /// <summary>
-    /// Multiplier applied to current angle each frame when input is below RecenterThreshold.
-    /// 0.97 = bleeds ~3% toward center per frame. Range: 0.90 – 0.99.
-    /// </summary>
-    public float RecenterStrength { get; set; } = 0.97f;
+    /// <summary>tanh gain. Controls saturation softness — tanh(curved * gain). 2.5 → 99% output at full lock, soft rolloff beyond. Default: 2.5.</summary>
+    public float SteeringGain { get; set; } = 2.5f;
+
+    /// <summary>Strength of the self-centering spring. 0 = off. Default: 0.02.</summary>
+    public float CenterAssist { get; set; } = 0.02f;
+
+    /// <summary>When true, RangeDegrees auto-calibrates to the user's actual rotation extremes. Resets on Recenter().</summary>
+    public bool AutoCalibrate { get; set; } = false;
 
     // -------------------------------------------------------------------------
-    // State
+    // State (read-only diagnostics)
     // -------------------------------------------------------------------------
 
-    /// <summary>Current integrated steering angle in degrees. Clamped to ±RangeDegrees.</summary>
     public float CurrentAngleDegrees { get; private set; } = 0f;
-
-    /// <summary>Last normalized output value. -1.0 = full left, +1.0 = full right.</summary>
     public float CurrentValue { get; private set; } = 0f;
-
-    /// <summary>Whether the controller is actively receiving input.</summary>
     public bool IsRunning { get; private set; } = false;
 
-    private DateTime _lastUpdate = DateTime.UtcNow;
-    private bool _firstReading = true;
+    // -------------------------------------------------------------------------
+    // Filter state
+    // -------------------------------------------------------------------------
+
+    private float _gyroAngle = 0f;      // integrated + fused angle (absolute degrees)
+    private float _accelAngle = 0f;     // absolute reference from gravity
+    private float _centerAngle = 0f;    // calibrated neutral position
+    private float _smoothedDegrees = 0f;
+    private bool _calibrated = false;
+    private long _prevGyroTimestamp;
+    private float _smoothedDt = 0.01f;  // EMA of inter-callback interval, guards against jitter
+    private bool _isCentered = true;    // hysteresis state — true = output locked to zero
+    private float _sessionLeftMax  = 0f; // most negative steeringDegrees seen this session
+    private float _sessionRightMax = 0f; // most positive steeringDegrees seen this session
+    private int   _calibrationSamples = 0;
+
+    private const float RadToDeg = 180f / MathF.PI;
 
     // -------------------------------------------------------------------------
     // Events
     // -------------------------------------------------------------------------
 
-    /// <summary>Fires every time a new steering value is computed. Payload: -1.0 to +1.0.</summary>
     public event EventHandler<float>? SteeringChanged;
-
-    /// <summary>Fires when the wheel is recentered (manually or via auto-center).</summary>
     public event EventHandler? Recentered;
 
     // -------------------------------------------------------------------------
     // Lifecycle
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Start listening to the gyroscope. Call once when the steering screen appears.
-    /// </summary>
-    /// <param name="sensorSpeed">How fast the gyroscope reports. Default: Game (fastest).</param>
-    public void Start(SensorSpeed sensorSpeed = SensorSpeed.Game)
+    public void Start(SensorSpeed sensorSpeed = SensorSpeed.Fastest)
     {
         if (IsRunning) return;
 
         if (!Gyroscope.Default.IsSupported)
             throw new NotSupportedException("This device does not have a gyroscope.");
+        if (!Accelerometer.Default.IsSupported)
+            throw new NotSupportedException("This device does not have an accelerometer.");
+
+        _calibrated = false;
+        _smoothedDegrees = 0f;
+        _isCentered = true;
+        _sessionLeftMax = 0f;
+        _sessionRightMax = 0f;
+        _calibrationSamples = 0;
+
+        Accelerometer.Default.ReadingChanged += OnAccelerometerReadingChanged;
+        Accelerometer.Default.Start(sensorSpeed);
 
         Gyroscope.Default.ReadingChanged += OnGyroscopeReadingChanged;
         Gyroscope.Default.Start(sensorSpeed);
 
-        _firstReading = true;
         IsRunning = true;
     }
 
-    /// <summary>
-    /// Stop listening to the gyroscope. Call when navigating away from the steering screen.
-    /// </summary>
     public void Stop()
     {
         if (!IsRunning) return;
+
+        Accelerometer.Default.ReadingChanged -= OnAccelerometerReadingChanged;
+        Accelerometer.Default.Stop();
 
         Gyroscope.Default.ReadingChanged -= OnGyroscopeReadingChanged;
         Gyroscope.Default.Stop();
@@ -102,63 +111,119 @@ public class SteeringController
     }
 
     // -------------------------------------------------------------------------
-    // Core processing
+    // Accelerometer handler — provides absolute angle reference
+    // -------------------------------------------------------------------------
+
+    private void OnAccelerometerReadingChanged(object? sender, AccelerometerChangedEventArgs e)
+    {
+        float x = e.Reading.Acceleration.X;
+        float y = e.Reading.Acceleration.Y;
+
+        // atan2(X, Y): absolute clock-rotation angle from upright.
+        // 12 o'clock portrait: X=0, Y≈1 → 0°. Rotate CW → X grows positive → positive degrees.
+        _accelAngle = MathF.Atan2(x, y) * RadToDeg;
+
+        if (!_calibrated)
+        {
+            _gyroAngle = _accelAngle;
+            _centerAngle = _accelAngle;
+            _smoothedDegrees = 0f;
+            _prevGyroTimestamp = Stopwatch.GetTimestamp();
+            _calibrated = true;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Gyroscope handler — integration + filter + emit
     // -------------------------------------------------------------------------
 
     private void OnGyroscopeReadingChanged(object? sender, GyroscopeChangedEventArgs e)
     {
-        float value = ProcessReading(e.Reading);
-        SteeringChanged?.Invoke(this, value);
-    }
+        if (!_calibrated) return;
 
-    /// <summary>
-    /// Process a single gyroscope reading and return the normalized steering value.
-    /// Can also be called manually (e.g. in tests or when injecting readings).
-    /// </summary>
-    public float ProcessReading(GyroscopeData data)
-    {
-        var now = DateTime.UtcNow;
+        var now = Stopwatch.GetTimestamp();
+        float rawDt = (float)(now - _prevGyroTimestamp) / Stopwatch.Frequency;
+        _prevGyroTimestamp = now;
 
-        // Skip delta-time on the very first reading to avoid a huge jump
-        if (_firstReading)
+        // Guard against absurd deltas (app resume, first tick), then EMA-smooth
+        if (rawDt <= 0f || rawDt > 0.05f) rawDt = 0.01f;
+        _smoothedDt = 0.7f * _smoothedDt + 0.3f * rawDt;
+        float dt = _smoothedDt;
+
+        // Negate Z: CW rotation (steering right) gives negative Z by right-hand rule
+        float gyroRate = -e.Reading.AngularVelocity.Z; // rad/s
+
+        // Integrate gyro
+        _gyroAngle += gyroRate * RadToDeg * dt;
+
+        // Dynamic complementary filter: trust accel more when still, gyro more when moving fast
+        float gyroRateDeg = gyroRate * RadToDeg;
+        float accelWeight =
+            MathF.Abs(gyroRateDeg) < 10f ? 0.03f :
+            MathF.Abs(gyroRateDeg) < 50f ? 0.01f :
+            0.001f;
+        _gyroAngle = (1f - accelWeight) * _gyroAngle + accelWeight * _accelAngle;
+
+        // Near-neutral drift correction: when nearly still and near center,
+        // silently pull gyroAngle toward the accel absolute reference.
+        // Condition uses relative angle (bug fix: accelAngle is absolute, not relative to center).
+        float steeringRelative = _gyroAngle - _centerAngle;
+        if (MathF.Abs(gyroRateDeg) < 0.5f && MathF.Abs(steeringRelative) < 2f)
+            _gyroAngle += (_accelAngle - _gyroAngle) * dt * 2f;
+
+        // Hand-bias learning: when completely still and near center, slowly adapt centerAngle
+        // toward the user's natural grip — ~20s time constant, invisible to the user
+        if (MathF.Abs(gyroRateDeg) < 0.2f && MathF.Abs(steeringRelative) < 3f)
+            _centerAngle += steeringRelative * dt * 0.05f;
+
+        // Self-centering spring: constant small pull toward center, mimics real wheel return force
+        _gyroAngle -= steeringRelative * CenterAssist * dt;
+
+        // Steering degrees relative to calibrated center
+        float steeringDegrees = _gyroAngle - _centerAngle;
+
+        // Auto range calibration: track per-session extremes, require 120 meaningful samples
+        // before updating RangeDegrees, clamp to safe bounds — resets on Recenter()
+        if (AutoCalibrate && MathF.Abs(steeringDegrees) > 5f)
         {
-            _lastUpdate = now;
-            _firstReading = false;
-            return CurrentValue;
+            _sessionLeftMax  = MathF.Min(_sessionLeftMax,  steeringDegrees);
+            _sessionRightMax = MathF.Max(_sessionRightMax, steeringDegrees);
+            _calibrationSamples++;
+
+            if (_calibrationSamples >= 120)
+            {
+                float observed = MathF.Max(MathF.Abs(_sessionLeftMax), MathF.Abs(_sessionRightMax));
+                RangeDegrees = Math.Clamp(observed, 15f, 90f);
+            }
         }
 
-        float deltaTime = (float)(now - _lastUpdate).TotalSeconds;
-        _lastUpdate = now;
+        // Adaptive smoothing: high alpha from first movement so response isn't delayed at turn start
+        float absRateDeg = MathF.Abs(gyroRateDeg);
+        float alpha =
+            absRateDeg > 5f ? 0.9f :
+            absRateDeg > 1f ? 0.6f :
+            0.2f;
+        _smoothedDegrees = (1f - alpha) * _smoothedDegrees + alpha * steeringDegrees;
 
-        // Guard against absurd delta (e.g. app resumed from background)
-        if (deltaTime > 0.1f) deltaTime = 0.1f;
+        // Hysteresis deadzone: enter center at DeadZone, exit at DeadZone*1.5 — eliminates flicker
+        float absSmoothed = MathF.Abs(_smoothedDegrees);
+        if (_isCentered)
+        {
+            if (absSmoothed > DeadZone * 1.5f) _isCentered = false;
+        }
+        else
+        {
+            if (absSmoothed < DeadZone) _isCentered = true;
+        }
+        float outputDegrees = _isCentered ? 0f : _smoothedDegrees;
 
-        // Portrait hold: Y-axis = tilting phone left/right
-        float angularVelocity = data.AngularVelocity.Y; // radians/sec
+        CurrentAngleDegrees = outputDegrees;
+        // No hard clamp — let tanh provide smooth saturation beyond RangeDegrees
+        float linear = outputDegrees * Sensitivity / RangeDegrees;
+        float curved = MathF.Sign(linear) * MathF.Pow(MathF.Abs(linear), SteeringExpo);
+        CurrentValue = MathF.Tanh(curved * SteeringGain);
 
-        // Dead zone — ignore noise when phone is still
-        if (MathF.Abs(angularVelocity) < DeadZone)
-            angularVelocity = 0f;
-
-        // Integrate: angular velocity → angle
-        float deltaDegrees = angularVelocity
-            * (180f / MathF.PI)   // rad → degrees
-            * deltaTime
-            * Sensitivity;
-
-        CurrentAngleDegrees += deltaDegrees;
-
-        // Passive re-centering spring — pulls toward 0 when input is idle
-        if (MathF.Abs(angularVelocity) < RecenterThreshold)
-            CurrentAngleDegrees *= RecenterStrength;
-
-        // Clamp to user-defined physical range
-        CurrentAngleDegrees = Math.Clamp(CurrentAngleDegrees, -RangeDegrees, RangeDegrees);
-
-        // Normalize to gamepad axis range: -1.0 (full left) → +1.0 (full right)
-        CurrentValue = CurrentAngleDegrees / RangeDegrees;
-
-        return CurrentValue;
+        SteeringChanged?.Invoke(this, CurrentValue);
     }
 
     // -------------------------------------------------------------------------
@@ -166,36 +231,38 @@ public class SteeringController
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Instantly reset the steering to center.
-    /// Call on double-tap or a dedicated recenter button.
+    /// Set the current phone position as the new center.
+    /// Hold the phone at your natural neutral steering position and press this.
+    /// Does NOT reset gyro state — filter continues uninterrupted.
     /// </summary>
     public void Recenter()
     {
+        _centerAngle = _gyroAngle;
+        _smoothedDegrees = 0f;
+        _isCentered = true;
+        _sessionLeftMax = 0f;
+        _sessionRightMax = 0f;
+        _calibrationSamples = 0;
         CurrentAngleDegrees = 0f;
         CurrentValue = 0f;
         Recentered?.Invoke(this, EventArgs.Empty);
         SteeringChanged?.Invoke(this, 0f);
     }
 
-    /// <summary>
-    /// Reset settings to defaults.
-    /// </summary>
     public void ResetSettings()
     {
-        Sensitivity = 1.0f;
+        Sensitivity = 1.4f;
         RangeDegrees = 45f;
-        DeadZone = 0.02f;
-        RecenterThreshold = 0.05f;
-        RecenterStrength = 0.97f;
+        DeadZone = 0.5f;
+        SteeringExpo = 1.2f;
+        SteeringGain = 2.5f;
+        CenterAssist = 0.02f;
     }
 
     // -------------------------------------------------------------------------
     // Diagnostics
     // -------------------------------------------------------------------------
 
-    /// <summary>
-    /// Returns a snapshot of current state — useful for a debug overlay during development.
-    /// </summary>
     public SteeringDiagnostics GetDiagnostics() => new()
     {
         AngleDegrees = CurrentAngleDegrees,
@@ -206,7 +273,6 @@ public class SteeringController
     };
 }
 
-/// <summary>Snapshot of SteeringController state for debug overlays or telemetry.</summary>
 public record SteeringDiagnostics
 {
     public float AngleDegrees { get; init; }

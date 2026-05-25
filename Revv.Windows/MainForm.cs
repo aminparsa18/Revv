@@ -38,9 +38,11 @@ public class MainForm : Form
     private Label _steeringValueLabel = null!;
     private Label _statusLabel = null!;
     private Label _ipLabel = null!;
+    private Label _telemetryLabel = null!;
     private Label _errorLabel = null!;
     private Button _minimizeButton = null!;
     private NotifyIcon _trayIcon = null!;
+    private System.Windows.Forms.Timer _telemetryTimer = null!;
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -124,6 +126,17 @@ public class MainForm : Form
             Bounds    = new Rectangle(0, 330, 360, 18),
         };
 
+        // Telemetry status (Forza speed data)
+        _telemetryLabel = new Label
+        {
+            Text      = "FORZA TELEMETRY  ·  WAITING",
+            ForeColor = TextMuted,
+            BackColor = Color.Transparent,
+            Font      = new Font("Segoe UI", 8f),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Bounds    = new Rectangle(0, 350, 360, 18),
+        };
+
         // Error
         _errorLabel = new Label
         {
@@ -132,7 +145,7 @@ public class MainForm : Form
             BackColor = Color.Transparent,
             Font      = new Font("Segoe UI", 8f),
             TextAlign = ContentAlignment.MiddleCenter,
-            Bounds    = new Rectangle(8, 350, 344, 36),
+            Bounds    = new Rectangle(8, 370, 344, 36),
         };
 
         // Minimize button
@@ -160,8 +173,12 @@ public class MainForm : Form
             _visualPanel.Invalidate();
         };
 
+        // Telemetry refresh timer (1 Hz is plenty for a status label)
+        _telemetryTimer = new System.Windows.Forms.Timer { Interval = 1000 };
+        _telemetryTimer.Tick += (_, _) => UpdateTelemetryLabel();
+
         Controls.AddRange(new Control[] { _titleLabel, _visualPanel, _steeringValueLabel,
-                                          _statusLabel, _ipLabel, _errorLabel, _minimizeButton });
+                                          _statusLabel, _ipLabel, _telemetryLabel, _errorLabel, _minimizeButton });
     }
 
     private void BuildTrayIcon()
@@ -332,6 +349,7 @@ public class MainForm : Form
         }
 
         _pulseTimer.Stop();
+        _telemetryTimer.Stop();
         _ = _session.StopAsync();
         _trayIcon.Dispose();
         base.OnFormClosing(e);
@@ -348,6 +366,7 @@ public class MainForm : Form
         // Stagger ring phases so they don't all start at 0
         _p1 = 0f; _p2 = 0.33f; _p3 = 0.66f;
         _pulseTimer.Start();
+        _telemetryTimer.Start();
 
         try
         {
@@ -370,6 +389,35 @@ public class MainForm : Form
             Invoke(action);
         else
             action();
+    }
+
+    private void UpdateTelemetryLabel()
+    {
+        var t = _session.Telemetry;
+        if (!t.IsListening)
+        {
+            _telemetryLabel.Text      = "FORZA TELEMETRY  ·  PORT BIND FAILED";
+            _telemetryLabel.ForeColor = AccentRed;
+            return;
+        }
+
+        if (t.RawPacketsReceived == 0)
+        {
+            _telemetryLabel.Text      = $"FORZA TELEMETRY  ·  LISTENING :{ForzaTelemetryReceiver.SpeedPort}  ·  NO DATA";
+            _telemetryLabel.ForeColor = TextMuted;
+            return;
+        }
+
+        // Raw packets arriving but none parsed — wrong format
+        if (t.PacketsReceived == 0)
+        {
+            _telemetryLabel.Text      = $"FORZA TELEMETRY  ·  RX {t.RawPacketsReceived} PKT ({t.LastPacketSize}B)  ·  UNKNOWN FORMAT";
+            _telemetryLabel.ForeColor = AccentRed;
+            return;
+        }
+
+        _telemetryLabel.Text      = $"FORZA  ·  {t.CurrentSpeedKmh:F0} km/h  ·  {t.PacketsReceived} pkts";
+        _telemetryLabel.ForeColor = ConnectedGreen;
     }
 
     private static string GetLocalIpAddresses()

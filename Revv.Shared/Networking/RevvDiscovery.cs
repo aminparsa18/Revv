@@ -11,6 +11,9 @@ public static class RevvDiscovery
     /// <summary>PC listens on this port for steering data packets.</summary>
     public const int DataPort = 5556;
 
+    /// <summary>Phone listens on this port for RTT echo replies from the PC.</summary>
+    public const int EchoPort = 5557;
+
     /// <summary>How often the phone re-broadcasts while waiting for a PC. (ms)</summary>
     public const int BroadcastIntervalMs = 1000;
 
