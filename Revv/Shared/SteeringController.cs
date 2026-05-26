@@ -1,13 +1,7 @@
-using System.Diagnostics;
+using System.Numerics;
 
 namespace Revv.Shared;
 
-/// <summary>
-/// Complementary filter steering controller.
-/// Gyroscope: fast, low-latency response.
-/// Accelerometer: long-term drift correction via atan2(X,Y).
-/// Both measure the same physical angle (Z-axis rotation held portrait toward chest).
-/// </summary>
 public class SteeringController
 {
     // -------------------------------------------------------------------------
@@ -26,7 +20,7 @@ public class SteeringController
     /// <summary>Expo curve exponent applied before tanh. 1.0 = linear. Higher = more center precision. Default: 1.2.</summary>
     public float SteeringExpo { get; set; } = 1.2f;
 
-    /// <summary>tanh gain. Controls saturation softness — tanh(curved * gain). 2.5 → 99% output at full lock, soft rolloff beyond. Default: 2.5.</summary>
+    /// <summary>tanh gain. Controls saturation softness. Default: 2.5.</summary>
     public float SteeringGain { get; set; } = 2.5f;
 
     /// <summary>Strength of the self-centering spring. 0 = off. Default: 0.02.</summary>
@@ -44,20 +38,21 @@ public class SteeringController
     public bool IsRunning { get; private set; } = false;
 
     // -------------------------------------------------------------------------
-    // Filter state
+    // Internal state
     // -------------------------------------------------------------------------
 
-    private float _gyroAngle = 0f;      // integrated + fused angle (absolute degrees)
-    private float _accelAngle = 0f;     // absolute reference from gravity
-    private float _centerAngle = 0f;    // calibrated neutral position
-    private float _smoothedDegrees = 0f;
+    // Reference quaternion: the orientation the user set as "straight ahead".
+    // Recenter() updates this. All steering angles are relative to it.
+    private Quaternion _referenceOrientation = Quaternion.Identity;
+    private Quaternion _lastOrientation = Quaternion.Identity;
     private bool _calibrated = false;
-    private long _prevGyroTimestamp;
-    private float _smoothedDt = 0.01f;  // EMA of inter-callback interval, guards against jitter
-    private bool _isCentered = true;    // hysteresis state — true = output locked to zero
-    private float _sessionLeftMax  = 0f; // most negative steeringDegrees seen this session
-    private float _sessionRightMax = 0f; // most positive steeringDegrees seen this session
-    private int   _calibrationSamples = 0;
+
+    private float _smoothedDegrees = 0f;
+    private float _prevRawDegrees = 0f;
+    private bool _isCentered = true;
+    private float _sessionLeftMax = 0f;
+    private float _sessionRightMax = 0f;
+    private int _calibrationSamples = 0;
 
     private const float RadToDeg = 180f / MathF.PI;
 
@@ -76,23 +71,19 @@ public class SteeringController
     {
         if (IsRunning) return;
 
-        if (!Gyroscope.Default.IsSupported)
-            throw new NotSupportedException("This device does not have a gyroscope.");
-        if (!Accelerometer.Default.IsSupported)
-            throw new NotSupportedException("This device does not have an accelerometer.");
+        if (!OrientationSensor.Default.IsSupported)
+            throw new NotSupportedException("This device does not support the orientation sensor.");
 
         _calibrated = false;
         _smoothedDegrees = 0f;
+        _prevRawDegrees = 0f;
         _isCentered = true;
         _sessionLeftMax = 0f;
         _sessionRightMax = 0f;
         _calibrationSamples = 0;
 
-        Accelerometer.Default.ReadingChanged += OnAccelerometerReadingChanged;
-        Accelerometer.Default.Start(sensorSpeed);
-
-        Gyroscope.Default.ReadingChanged += OnGyroscopeReadingChanged;
-        Gyroscope.Default.Start(sensorSpeed);
+        OrientationSensor.Default.ReadingChanged += OnOrientationChanged;
+        OrientationSensor.Default.Start(sensorSpeed);
 
         IsRunning = true;
     }
@@ -101,93 +92,55 @@ public class SteeringController
     {
         if (!IsRunning) return;
 
-        Accelerometer.Default.ReadingChanged -= OnAccelerometerReadingChanged;
-        Accelerometer.Default.Stop();
-
-        Gyroscope.Default.ReadingChanged -= OnGyroscopeReadingChanged;
-        Gyroscope.Default.Stop();
+        OrientationSensor.Default.ReadingChanged -= OnOrientationChanged;
+        OrientationSensor.Default.Stop();
 
         IsRunning = false;
     }
 
     // -------------------------------------------------------------------------
-    // Accelerometer handler — provides absolute angle reference
+    // Orientation handler
     // -------------------------------------------------------------------------
 
-    private void OnAccelerometerReadingChanged(object? sender, AccelerometerChangedEventArgs e)
+    private void OnOrientationChanged(object? sender, OrientationSensorChangedEventArgs e)
     {
-        float x = e.Reading.Acceleration.X;
-        float y = e.Reading.Acceleration.Y;
+        var q = e.Reading.Orientation;
+        _lastOrientation = q;
 
-        // atan2(X, Y): absolute clock-rotation angle from upright.
-        // 12 o'clock portrait: X=0, Y≈1 → 0°. Rotate CW → X grows positive → positive degrees.
-        _accelAngle = MathF.Atan2(x, y) * RadToDeg;
-
+        // First reading: snapshot as the neutral reference, then wait for next tick
         if (!_calibrated)
         {
-            _gyroAngle = _accelAngle;
-            _centerAngle = _accelAngle;
-            _smoothedDegrees = 0f;
-            _prevGyroTimestamp = Stopwatch.GetTimestamp();
+            _referenceOrientation = q;
             _calibrated = true;
+            return;
         }
-    }
 
-    // -------------------------------------------------------------------------
-    // Gyroscope handler — integration + filter + emit
-    // -------------------------------------------------------------------------
+        // Relative rotation from reference to current, expressed in the reference device frame.
+        // q_rel = q_ref⁻¹ * q_curr  →  rotation around device Z = steering wheel rotation.
+        var delta = Quaternion.Inverse(_referenceOrientation) * q;
 
-    private void OnGyroscopeReadingChanged(object? sender, GyroscopeChangedEventArgs e)
-    {
-        if (!_calibrated) return;
+        // Extract Z-axis twist. CW rotation (steer right) is negative Z by right-hand rule, so negate.
+        float rawDegrees = ZTwistDegrees(delta);
 
-        var now = Stopwatch.GetTimestamp();
-        float rawDt = (float)(now - _prevGyroTimestamp) / Stopwatch.Frequency;
-        _prevGyroTimestamp = now;
+        // Adaptive smoothing: alpha tracks per-sample change magnitude as a rate proxy.
+        // Fast turning → high alpha (responsive). Still/slow → low alpha (noise filter).
+        float changePerSample = MathF.Abs(rawDegrees - _prevRawDegrees);
+        float alpha =
+            changePerSample > 1.5f ? 0.9f :
+            changePerSample > 0.4f ? 0.6f :
+            0.2f;
+        _prevRawDegrees = rawDegrees;
 
-        // Guard against absurd deltas (app resume, first tick), then EMA-smooth
-        if (rawDt <= 0f || rawDt > 0.05f) rawDt = 0.01f;
-        _smoothedDt = 0.7f * _smoothedDt + 0.3f * rawDt;
-        float dt = _smoothedDt;
+        // Self-centering spring: gentle decay toward zero each frame.
+        // Compensates for any residual hold bias; also gives return-to-center feel.
+        _smoothedDegrees *= 1f - CenterAssist;
+        _smoothedDegrees = (1f - alpha) * _smoothedDegrees + alpha * rawDegrees;
 
-        // Negate Z: CW rotation (steering right) gives negative Z by right-hand rule
-        float gyroRate = -e.Reading.AngularVelocity.Z; // rad/s
-
-        // Integrate gyro
-        _gyroAngle += gyroRate * RadToDeg * dt;
-
-        // Dynamic complementary filter: trust accel more when still, gyro more when moving fast
-        float gyroRateDeg = gyroRate * RadToDeg;
-        float accelWeight =
-            MathF.Abs(gyroRateDeg) < 10f ? 0.03f :
-            MathF.Abs(gyroRateDeg) < 50f ? 0.01f :
-            0.001f;
-        _gyroAngle = (1f - accelWeight) * _gyroAngle + accelWeight * _accelAngle;
-
-        // Near-neutral drift correction: when nearly still and near center,
-        // silently pull gyroAngle toward the accel absolute reference.
-        // Condition uses relative angle (bug fix: accelAngle is absolute, not relative to center).
-        float steeringRelative = _gyroAngle - _centerAngle;
-        if (MathF.Abs(gyroRateDeg) < 0.5f && MathF.Abs(steeringRelative) < 2f)
-            _gyroAngle += (_accelAngle - _gyroAngle) * dt * 2f;
-
-        // Hand-bias learning: when completely still and near center, slowly adapt centerAngle
-        // toward the user's natural grip — ~20s time constant, invisible to the user
-        if (MathF.Abs(gyroRateDeg) < 0.2f && MathF.Abs(steeringRelative) < 3f)
-            _centerAngle += steeringRelative * dt * 0.05f;
-
-        // Self-centering spring: constant small pull toward center, mimics real wheel return force
-        _gyroAngle -= steeringRelative * CenterAssist * dt;
-
-        // Steering degrees relative to calibrated center
-        float steeringDegrees = _gyroAngle - _centerAngle;
-
-        // Auto range calibration: track per-session extremes, require 120 meaningful samples
-        // before updating RangeDegrees, clamp to safe bounds — resets on Recenter()
-        if (AutoCalibrate && MathF.Abs(steeringDegrees) > 5f)
+        // Auto range calibration
+        if (AutoCalibrate && MathF.Abs(_smoothedDegrees) > 5f)
         {
-            _sessionLeftMax  = MathF.Min(_sessionLeftMax,  steeringDegrees);
-            _sessionRightMax = MathF.Max(_sessionRightMax, steeringDegrees);
+            _sessionLeftMax  = MathF.Min(_sessionLeftMax,  _smoothedDegrees);
+            _sessionRightMax = MathF.Max(_sessionRightMax, _smoothedDegrees);
             _calibrationSamples++;
 
             if (_calibrationSamples >= 120)
@@ -197,15 +150,7 @@ public class SteeringController
             }
         }
 
-        // Adaptive smoothing: high alpha from first movement so response isn't delayed at turn start
-        float absRateDeg = MathF.Abs(gyroRateDeg);
-        float alpha =
-            absRateDeg > 5f ? 0.9f :
-            absRateDeg > 1f ? 0.6f :
-            0.2f;
-        _smoothedDegrees = (1f - alpha) * _smoothedDegrees + alpha * steeringDegrees;
-
-        // Hysteresis deadzone: enter center at DeadZone, exit at DeadZone*1.5 — eliminates flicker
+        // Hysteresis deadzone: enter center at DeadZone, exit at DeadZone×1.5 — eliminates flicker
         float absSmoothed = MathF.Abs(_smoothedDegrees);
         if (_isCentered)
         {
@@ -218,12 +163,21 @@ public class SteeringController
         float outputDegrees = _isCentered ? 0f : _smoothedDegrees;
 
         CurrentAngleDegrees = outputDegrees;
-        // No hard clamp — let tanh provide smooth saturation beyond RangeDegrees
         float linear = outputDegrees * Sensitivity / RangeDegrees;
         float curved = MathF.Sign(linear) * MathF.Pow(MathF.Abs(linear), SteeringExpo);
         CurrentValue = MathF.Tanh(curved * SteeringGain);
 
         SteeringChanged?.Invoke(this, CurrentValue);
+    }
+
+    // Swing-twist decomposition: angle of rotation around the quaternion's local Z axis.
+    // Returns signed degrees in (-180, 180).
+    private static float ZTwistDegrees(Quaternion q)
+    {
+        // Project vector part onto Z axis to isolate the twist component.
+        // Guard: if both Z and W are zero the quaternion is degenerate (shouldn't happen in practice).
+        if (q.Z * q.Z + q.W * q.W < 1e-12f) return 0f;
+        return 2f * MathF.Atan2(q.Z, q.W) * RadToDeg;
     }
 
     // -------------------------------------------------------------------------
@@ -233,12 +187,15 @@ public class SteeringController
     /// <summary>
     /// Set the current phone position as the new center.
     /// Hold the phone at your natural neutral steering position and press this.
-    /// Does NOT reset gyro state — filter continues uninterrupted.
+    /// Snapshots the current quaternion as the new reference — instant, no filter disruption.
     /// </summary>
     public void Recenter()
     {
-        _centerAngle = _gyroAngle;
+        if (_calibrated)
+            _referenceOrientation = _lastOrientation;
+
         _smoothedDegrees = 0f;
+        _prevRawDegrees = 0f;
         _isCentered = true;
         _sessionLeftMax = 0f;
         _sessionRightMax = 0f;
