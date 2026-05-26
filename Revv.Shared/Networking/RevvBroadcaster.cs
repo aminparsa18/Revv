@@ -15,11 +15,13 @@ public class RevvBroadcaster : IAsyncDisposable
     public event EventHandler? Disconnected;
     public event EventHandler<Exception>? ErrorOccurred;
     public event EventHandler<int>? LatencyUpdated; // smoothed RTT in ms
+    public event EventHandler<(byte Large, byte Small)>? RumbleReceived;
 
     private UdpClient? _broadcaster;
     private UdpClient? _ackListener;
     private UdpClient? _streamer;
     private UdpClient? _echoListener;
+    private UdpClient? _rumbleListener;
     private CancellationTokenSource? _cts;
     private float _latestSteering = 0f;
     private float _latestThrottle = 0f;
@@ -133,6 +135,13 @@ public class RevvBroadcaster : IAsyncDisposable
         }
         catch { /* echo unavailable — latency display stays at "—" */ }
 
+        try
+        {
+            _rumbleListener = new UdpClient(RevvDiscovery.RumblePort);
+            _ = ReceiveRumbleAsync(_rumbleListener, ct);
+        }
+        catch { /* rumble unavailable */ }
+
         var pcEndpoint = new IPEndPoint(IPAddress.Parse(pcIp), RevvDiscovery.DataPort);
         var intervalMs = 1000 / SendRateHz;
 
@@ -166,8 +175,25 @@ public class RevvBroadcaster : IAsyncDisposable
                 _streamer?.Close();
                 _echoListener?.Close();
                 _echoListener = null;
+                _rumbleListener?.Close();
+                _rumbleListener = null;
                 await EnterDiscoveryAsync(ct);
             }
+        }
+    }
+
+    private async Task ReceiveRumbleAsync(UdpClient rumbleListener, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                var result = await rumbleListener.ReceiveAsync(ct);
+                if (result.Buffer.Length < 2) continue;
+                RumbleReceived?.Invoke(this, (result.Buffer[0], result.Buffer[1]));
+            }
+            catch (OperationCanceledException) { break; }
+            catch { break; }
         }
     }
 
@@ -208,6 +234,7 @@ public class RevvBroadcaster : IAsyncDisposable
         try { _ackListener?.Close(); } catch { }
         try { _streamer?.Close(); } catch { }
         try { _echoListener?.Close(); } catch { }
+        try { _rumbleListener?.Close(); } catch { }
         _broadcaster = null;
         _ackListener = null;
         _streamer = null;

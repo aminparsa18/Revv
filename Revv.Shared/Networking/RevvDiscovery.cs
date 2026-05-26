@@ -14,6 +14,9 @@ public static class RevvDiscovery
     /// <summary>Phone listens on this port for RTT echo replies from the PC.</summary>
     public const int EchoPort = 5557;
 
+    /// <summary>Phone listens on this port for rumble/haptic commands from the PC.</summary>
+    public const int RumblePort = 5558;
+
     /// <summary>How often the phone re-broadcasts while waiting for a PC. (ms)</summary>
     public const int BroadcastIntervalMs = 1000;
 

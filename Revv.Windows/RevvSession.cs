@@ -7,8 +7,6 @@ public class RevvSession : IAsyncDisposable
 {
     public RevvReceiver Receiver { get; } = new();
     public RevvGamepad Gamepad { get; } = new();
-    public ForzaTelemetryReceiver Telemetry { get; } = new();
-
     public SessionState State { get; private set; } = SessionState.Idle;
 
     public event EventHandler<string>? PhoneConnected;
@@ -22,6 +20,7 @@ public class RevvSession : IAsyncDisposable
 
         Gamepad.Connect();
         Gamepad.ErrorOccurred += (_, ex) => ErrorOccurred?.Invoke(this, ex);
+        Gamepad.RumbleReceived += OnRumbleReceived;
 
         Receiver.PhoneConnected += OnPhoneConnected;
         Receiver.PhoneDisconnected += OnPhoneDisconnected;
@@ -29,9 +28,6 @@ public class RevvSession : IAsyncDisposable
         Receiver.ThrottleReceived += (_, v) => Gamepad.SetThrottle(v);
         Receiver.BrakeReceived += (_, v) => Gamepad.SetBrake(v);
         Receiver.ErrorOccurred += (_, ex) => ErrorOccurred?.Invoke(this, ex);
-
-        Telemetry.SpeedUpdated += (_, v) => Gamepad.UpdateSpeed(v);
-        Telemetry.StartAsync();
 
         State = SessionState.WaitingForPhone;
         Receiver.StartAsync();
@@ -41,7 +37,6 @@ public class RevvSession : IAsyncDisposable
     public async Task StopAsync()
     {
         await Receiver.StopAsync();
-        await Telemetry.StopAsync();
         Gamepad.ZeroAllInputs();
         Gamepad.Disconnect();
         State = SessionState.Idle;
@@ -66,14 +61,17 @@ public class RevvSession : IAsyncDisposable
         SteeringUpdated?.Invoke(this, value);
     }
 
+    private void OnRumbleReceived(object? sender, (byte Large, byte Small) e)
+        => Receiver.SendRumble(e.Large, e.Small);
+
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
         Receiver.PhoneConnected -= OnPhoneConnected;
         Receiver.PhoneDisconnected -= OnPhoneDisconnected;
         Receiver.SteeringReceived -= OnSteeringReceived;
+        Gamepad.RumbleReceived -= OnRumbleReceived;
         Gamepad.Dispose();
-        await Telemetry.DisposeAsync();
     }
 }
 

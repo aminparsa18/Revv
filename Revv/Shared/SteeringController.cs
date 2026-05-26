@@ -27,7 +27,7 @@ public class SteeringController
     public float CenterAssist { get; set; } = 0.02f;
 
     /// <summary>When true, RangeDegrees auto-calibrates to the user's actual rotation extremes. Resets on Recenter().</summary>
-    public bool AutoCalibrate { get; set; } = false;
+    public bool AutoCalibrate { get; set; } = true;
 
     // -------------------------------------------------------------------------
     // State (read-only diagnostics)
@@ -47,8 +47,7 @@ public class SteeringController
     private Quaternion _lastOrientation = Quaternion.Identity;
     private bool _calibrated = false;
 
-    private float _smoothedDegrees = 0f;
-    private float _prevRawDegrees = 0f;
+    private float _degrees = 0f;
     private bool _isCentered = true;
     private float _sessionLeftMax = 0f;
     private float _sessionRightMax = 0f;
@@ -75,8 +74,7 @@ public class SteeringController
             throw new NotSupportedException("This device does not support the orientation sensor.");
 
         _calibrated = false;
-        _smoothedDegrees = 0f;
-        _prevRawDegrees = 0f;
+        _degrees = 0f;
         _isCentered = true;
         _sessionLeftMax = 0f;
         _sessionRightMax = 0f;
@@ -120,27 +118,16 @@ public class SteeringController
         var delta = Quaternion.Inverse(_referenceOrientation) * q;
 
         // Extract Z-axis twist. CW rotation (steer right) is negative Z by right-hand rule, so negate.
-        float rawDegrees = ZTwistDegrees(delta);
-
-        // Adaptive smoothing: alpha tracks per-sample change magnitude as a rate proxy.
-        // Fast turning → high alpha (responsive). Still/slow → low alpha (noise filter).
-        float changePerSample = MathF.Abs(rawDegrees - _prevRawDegrees);
-        float alpha =
-            changePerSample > 1.5f ? 0.9f :
-            changePerSample > 0.4f ? 0.6f :
-            0.2f;
-        _prevRawDegrees = rawDegrees;
+        _degrees = ZTwistDegrees(delta);
 
         // Self-centering spring: gentle decay toward zero each frame.
-        // Compensates for any residual hold bias; also gives return-to-center feel.
-        _smoothedDegrees *= 1f - CenterAssist;
-        _smoothedDegrees = (1f - alpha) * _smoothedDegrees + alpha * rawDegrees;
+        _degrees *= 1f - CenterAssist;
 
         // Auto range calibration
-        if (AutoCalibrate && MathF.Abs(_smoothedDegrees) > 5f)
+        if (AutoCalibrate && MathF.Abs(_degrees) > 5f)
         {
-            _sessionLeftMax  = MathF.Min(_sessionLeftMax,  _smoothedDegrees);
-            _sessionRightMax = MathF.Max(_sessionRightMax, _smoothedDegrees);
+            _sessionLeftMax  = MathF.Min(_sessionLeftMax,  _degrees);
+            _sessionRightMax = MathF.Max(_sessionRightMax, _degrees);
             _calibrationSamples++;
 
             if (_calibrationSamples >= 120)
@@ -151,16 +138,16 @@ public class SteeringController
         }
 
         // Hysteresis deadzone: enter center at DeadZone, exit at DeadZone×1.5 — eliminates flicker
-        float absSmoothed = MathF.Abs(_smoothedDegrees);
+        float absDegrees = MathF.Abs(_degrees);
         if (_isCentered)
         {
-            if (absSmoothed > DeadZone * 1.5f) _isCentered = false;
+            if (absDegrees > DeadZone * 1.5f) _isCentered = false;
         }
         else
         {
-            if (absSmoothed < DeadZone) _isCentered = true;
+            if (absDegrees < DeadZone) _isCentered = true;
         }
-        float outputDegrees = _isCentered ? 0f : _smoothedDegrees;
+        float outputDegrees = _isCentered ? 0f : _degrees;
 
         CurrentAngleDegrees = outputDegrees;
         float linear = outputDegrees * Sensitivity / RangeDegrees;
@@ -194,8 +181,7 @@ public class SteeringController
         if (_calibrated)
             _referenceOrientation = _lastOrientation;
 
-        _smoothedDegrees = 0f;
-        _prevRawDegrees = 0f;
+        _degrees = 0f;
         _isCentered = true;
         _sessionLeftMax = 0f;
         _sessionRightMax = 0f;

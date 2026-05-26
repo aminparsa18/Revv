@@ -21,19 +21,14 @@ public class MainForm : Form
     // -------------------------------------------------------------------------
 
     private readonly RevvSession _session = new();
-    private bool _isConnected = false;
-    private float _currentSteering = 0f;
     private bool _exitRequested = false;
-
-    // Pulse animation: three rings, each with an independent phase (0.0–1.0)
-    private float _p1 = 0f, _p2 = 0f, _p3 = 0f;
-    private System.Windows.Forms.Timer _pulseTimer = null!;
 
     // -------------------------------------------------------------------------
     // Controls
     // -------------------------------------------------------------------------
 
-    private BufferedPanel _visualPanel = null!;
+    private AttitudeSKControl _attitudeView = null!;
+    private PulseSKControl _pulseView = null!;
     private Label _titleLabel = null!;
     private Label _steeringValueLabel = null!;
     private Label _statusLabel = null!;
@@ -69,6 +64,10 @@ public class MainForm : Form
         BackColor         = BgColor;
         Font              = new Font("Segoe UI", 9f);
         StartPosition     = FormStartPosition.CenterScreen;
+
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "revv.ico");
+        if (File.Exists(iconPath))
+            Icon = new Icon(iconPath);
     }
 
     private void BuildControls()
@@ -84,13 +83,20 @@ public class MainForm : Form
             Bounds    = new Rectangle(0, 12, 360, 32),
         };
 
-        // Visual panel (custom-painted wheel / pulse rings)
-        _visualPanel = new BufferedPanel
+        // Pulse (disconnected / waiting state)
+        _pulseView = new PulseSKControl
         {
             Bounds    = new Rectangle(80, 56, 200, 200),
             BackColor = BgColor,
         };
-        _visualPanel.Paint += PaintVisual;
+
+        // Attitude indicator (SkiaSharp horizon, shown only when connected)
+        _attitudeView = new AttitudeSKControl
+        {
+            Bounds    = new Rectangle(80, 56, 200, 200),
+            BackColor = BgColor,
+            Visible   = false,
+        };
 
         // Steering value
         _steeringValueLabel = new Label
@@ -163,21 +169,10 @@ public class MainForm : Form
         _minimizeButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(28, 28, 28);
         _minimizeButton.Click += (_, _) => MinimizeToTray();
 
-        // Pulse animation timer
-        _pulseTimer = new System.Windows.Forms.Timer { Interval = 16 }; // ~60fps
-        _pulseTimer.Tick += (_, _) =>
-        {
-            _p1 = (_p1 + 0.008f) % 1f;
-            _p2 = (_p2 + 0.008f) % 1f;
-            _p3 = (_p3 + 0.008f) % 1f;
-            _visualPanel.Invalidate();
-        };
-
         // Telemetry refresh timer (1 Hz is plenty for a status label)
         _telemetryTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _telemetryTimer.Tick += (_, _) => UpdateTelemetryLabel();
 
-        Controls.AddRange(new Control[] { _titleLabel, _visualPanel, _steeringValueLabel,
+        Controls.AddRange(new Control[] { _titleLabel, _pulseView, _attitudeView, _steeringValueLabel,
                                           _statusLabel, _ipLabel, _telemetryLabel, _errorLabel, _minimizeButton });
     }
 
@@ -188,10 +183,11 @@ public class MainForm : Form
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit").Click        += (_, _) => ExitApp();
 
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "revv.ico");
         _trayIcon = new NotifyIcon
         {
             Text             = "REVV — PC Receiver",
-            Icon             = SystemIcons.Application,
+            Icon             = File.Exists(iconPath) ? new Icon(iconPath) : SystemIcons.Application,
             ContextMenuStrip = menu,
             Visible          = false,
         };
@@ -206,112 +202,36 @@ public class MainForm : Form
     {
         _session.PhoneConnected += (_, ip) => InvokeOnUI(() =>
         {
-            _isConnected = true;
-            _pulseTimer.Stop();
-            _statusLabel.Text      = $"CONNECTED  ·  {ip}";
-            _statusLabel.ForeColor = ConnectedGreen;
+            _statusLabel.Text           = $"CONNECTED  ·  {ip}";
+            _statusLabel.ForeColor      = ConnectedGreen;
             _steeringValueLabel.Visible = true;
-            _errorLabel.Text       = string.Empty;
-            _visualPanel.Invalidate();
+            _errorLabel.Text            = string.Empty;
+            _pulseView.StopPulse();
+            _pulseView.Visible    = false;
+            _attitudeView.Update(0f);
+            _attitudeView.Visible = true;
         });
 
         _session.PhoneDisconnected += (_, _) => InvokeOnUI(() =>
         {
-            _isConnected         = false;
-            _currentSteering     = 0f;
-            _statusLabel.Text    = "WAITING FOR PHONE";
-            _statusLabel.ForeColor = TextMuted;
+            _statusLabel.Text           = "WAITING FOR PHONE";
+            _statusLabel.ForeColor      = TextMuted;
             _steeringValueLabel.Visible = false;
-            _p1 = 0f; _p2 = 0.33f; _p3 = 0.66f;
-            _pulseTimer.Start();
-            _visualPanel.Invalidate();
+            _attitudeView.Visible = false;
+            _pulseView.Visible    = true;
+            _pulseView.StartPulse();
         });
 
         _session.SteeringUpdated += (_, value) => InvokeOnUI(() =>
         {
-            _currentSteering         = value;
             _steeringValueLabel.Text = $"{value:+0.00;-0.00;0.00}";
-            _visualPanel.Invalidate();
+            _attitudeView.Update(value * 45f);
         });
 
         _session.ErrorOccurred += (_, ex) => InvokeOnUI(() =>
         {
             _errorLabel.Text = ex.Message;
         });
-    }
-
-    // -------------------------------------------------------------------------
-    // Painting
-    // -------------------------------------------------------------------------
-
-    private void PaintVisual(object? sender, PaintEventArgs e)
-    {
-        var g = e.Graphics;
-        g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-
-        var cx = _visualPanel.Width / 2f;
-        var cy = _visualPanel.Height / 2f;
-
-        if (_isConnected)
-            DrawWheel(g, cx, cy);
-        else
-            DrawPulse(g, cx, cy);
-    }
-
-    private void DrawWheel(Graphics g, float cx, float cy)
-    {
-        // Rotate around the center by steering angle (±135°)
-        g.TranslateTransform(cx, cy);
-        g.RotateTransform(_currentSteering * 135f);
-        g.TranslateTransform(-cx, -cy);
-
-        float r = 70f;
-        using var rimPen    = new Pen(AccentRed, 10f);
-        using var spokePen  = new Pen(AccentRed, 5f);
-
-        // Outer rim
-        g.DrawEllipse(rimPen, cx - r, cy - r, r * 2, r * 2);
-
-        // Vertical spoke
-        g.DrawLine(spokePen, cx, cy - r + 5, cx, cy + r - 5);
-
-        // Horizontal spoke
-        g.DrawLine(spokePen, cx - r + 5, cy, cx + r - 5, cy);
-
-        g.ResetTransform();
-
-        // Hub (always upright — drawn after reset)
-        float hr = 15f;
-        using var hubPen  = new Pen(ConnectedGreen, 5f);
-        using var hubBrush = new SolidBrush(BgColor);
-        g.FillEllipse(hubBrush, cx - hr, cy - hr, hr * 2, hr * 2);
-        g.DrawEllipse(hubPen,   cx - hr, cy - hr, hr * 2, hr * 2);
-    }
-
-    private void DrawPulse(Graphics g, float cx, float cy)
-    {
-        // Center dot
-        using var dotBrush = new SolidBrush(AccentRed);
-        g.FillEllipse(dotBrush, cx - 6, cy - 6, 12, 12);
-
-        // Three rings, each offset 1/3 of the cycle
-        DrawPulseRing(g, cx, cy, _p1, 60f, 2f,   0.75f);
-        DrawPulseRing(g, cx, cy, _p2, 52f, 1.5f, 0.5f);
-        DrawPulseRing(g, cx, cy, _p3, 44f, 1f,   0.3f);
-    }
-
-    private static void DrawPulseRing(Graphics g, float cx, float cy,
-                                      float phase, float maxR, float strokeW, float maxAlpha)
-    {
-        // phase 0→1: ring expands from 0→maxR and fades from maxAlpha→0
-        float r       = phase * maxR;
-        if (!float.IsFinite(r) || r <= 0) return;  // GDI+ rejects zero/invalid-dimension ellipses
-        float alpha   = (1f - phase) * maxAlpha;
-        int   a       = (int)(alpha * 255);
-        if (a <= 0) return;
-
-        using var pen = new Pen(Color.FromArgb(a, AccentRed), strokeW);
-        g.DrawEllipse(pen, cx - r, cy - r, r * 2, r * 2);
     }
 
     // -------------------------------------------------------------------------
@@ -322,6 +242,7 @@ public class MainForm : Form
     {
         _trayIcon.Visible = true;
         Hide();
+        _trayIcon.ShowBalloonTip(3000, "REVV", "Still running. Right-click the tray icon to exit.", ToolTipIcon.None);
     }
 
     private void RestoreFromTray()
@@ -348,7 +269,6 @@ public class MainForm : Form
             return;
         }
 
-        _pulseTimer.Stop();
         _telemetryTimer.Stop();
         _ = _session.StopAsync();
         _trayIcon.Dispose();
@@ -363,9 +283,7 @@ public class MainForm : Form
     {
         base.OnLoad(e);
 
-        // Stagger ring phases so they don't all start at 0
-        _p1 = 0f; _p2 = 0.33f; _p3 = 0.66f;
-        _pulseTimer.Start();
+        _pulseView.StartPulse();
         _telemetryTimer.Start();
 
         try
@@ -391,35 +309,6 @@ public class MainForm : Form
             action();
     }
 
-    private void UpdateTelemetryLabel()
-    {
-        var t = _session.Telemetry;
-        if (!t.IsListening)
-        {
-            _telemetryLabel.Text      = "FORZA TELEMETRY  ·  PORT BIND FAILED";
-            _telemetryLabel.ForeColor = AccentRed;
-            return;
-        }
-
-        if (t.RawPacketsReceived == 0)
-        {
-            _telemetryLabel.Text      = $"FORZA TELEMETRY  ·  LISTENING :{ForzaTelemetryReceiver.SpeedPort}  ·  NO DATA";
-            _telemetryLabel.ForeColor = TextMuted;
-            return;
-        }
-
-        // Raw packets arriving but none parsed — wrong format
-        if (t.PacketsReceived == 0)
-        {
-            _telemetryLabel.Text      = $"FORZA TELEMETRY  ·  RX {t.RawPacketsReceived} PKT ({t.LastPacketSize}B)  ·  UNKNOWN FORMAT";
-            _telemetryLabel.ForeColor = AccentRed;
-            return;
-        }
-
-        _telemetryLabel.Text      = $"FORZA  ·  {t.CurrentSpeedKmh:F0} km/h  ·  {t.PacketsReceived} pkts";
-        _telemetryLabel.ForeColor = ConnectedGreen;
-    }
-
     private static string GetLocalIpAddresses()
     {
         var ips = NetworkInterface.GetAllNetworkInterfaces()
@@ -429,10 +318,5 @@ public class MainForm : Form
             .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
             .Select(a => a.Address.ToString());
         return string.Join("  ·  ", ips);
-    }
-
-    private sealed class BufferedPanel : Panel
-    {
-        public BufferedPanel() => DoubleBuffered = true;
     }
 }

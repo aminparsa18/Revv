@@ -18,6 +18,10 @@ public class RevvGamepad : IDisposable
     public event EventHandler? GamepadConnected;
     public event EventHandler? GamepadDisconnected;
     public event EventHandler<Exception>? ErrorOccurred;
+    public event EventHandler<(byte Large, byte Small)>? RumbleReceived;
+
+    private byte _lastLargeMotor = 0;
+    private byte _lastSmallMotor = 0;
 
     private ViGEmClient? _client;
     private IXbox360Controller? _controller;
@@ -59,6 +63,7 @@ public class RevvGamepad : IDisposable
             _client = new ViGEmClient();
             _controller = _client.CreateXbox360Controller();
             _controller.Connect();
+            _controller.FeedbackReceived += OnFeedbackReceived;
 
             IsConnected = true;
 
@@ -88,6 +93,10 @@ public class RevvGamepad : IDisposable
         try
         {
             ZeroAllInputs();
+            if (_controller is not null)
+                _controller.FeedbackReceived -= OnFeedbackReceived;
+            _lastLargeMotor = 0;
+            _lastSmallMotor = 0;
             _controller?.Disconnect();
             _client?.Dispose();
 
@@ -139,6 +148,14 @@ public class RevvGamepad : IDisposable
         _controller.SetSliderValue(Xbox360Slider.RightTrigger, 0);
         _controller.SetSliderValue(Xbox360Slider.LeftTrigger, 0);
         _controller.SubmitReport();
+    }
+
+    private void OnFeedbackReceived(object sender, Xbox360FeedbackReceivedEventArgs e)
+    {
+        if (e.LargeMotor == _lastLargeMotor && e.SmallMotor == _lastSmallMotor) return;
+        _lastLargeMotor = e.LargeMotor;
+        _lastSmallMotor = e.SmallMotor;
+        RumbleReceived?.Invoke(this, (e.LargeMotor, e.SmallMotor));
     }
 
     private void RenderLoop()

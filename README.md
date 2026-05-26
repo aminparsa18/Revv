@@ -65,13 +65,9 @@ The PC side applies a spring-damper filter before input reaches the game, smooth
 
 ## Roadmap
 
-- [ ] Touch pedals (throttle / brake overlay)
-- [ ] Multiple steering profiles
 - [ ] Haptic feedback at full lock
 - [ ] Settings persistence between sessions
 - [ ] iOS support
-- [ ] Packet loss / latency debug overlay
-- [ ] Dedicated ESP32 + BNO055 hardware module (phone-independent controller)
 
 ---
 

@@ -25,8 +25,20 @@ public class RevvReceiver : IAsyncDisposable
     private UdpClient? _discoveryListener;
     private UdpClient? _dataListener;
     private UdpClient? _echoSender;
+    private UdpClient? _rumbleSender;
     private CancellationTokenSource? _cts;
     private DateTime _lastPacketTime = DateTime.MinValue;
+
+    public void SendRumble(byte large, byte small)
+    {
+        if (State != ReceiverState.Receiving || ConnectedPhoneIp is null || _rumbleSender is null) return;
+        try
+        {
+            var ep = new IPEndPoint(IPAddress.Parse(ConnectedPhoneIp), RevvDiscovery.RumblePort);
+            _rumbleSender.Send(new[] { large, small }, 2, ep);
+        }
+        catch { }
+    }
 
     public Task StartAsync()
     {
@@ -102,6 +114,7 @@ public class RevvReceiver : IAsyncDisposable
 
         _dataListener = new UdpClient(RevvDiscovery.DataPort);
         _echoSender = new UdpClient();
+        _rumbleSender = new UdpClient();
         var echoEndpoint = new IPEndPoint(IPAddress.Parse(phoneIp), RevvDiscovery.EchoPort);
 
         _ = Task.Run(async () =>
@@ -182,6 +195,8 @@ public class RevvReceiver : IAsyncDisposable
         _dataListener = null;
         try { _echoSender?.Close(); } catch { }
         _echoSender = null;
+        try { _rumbleSender?.Close(); } catch { }
+        _rumbleSender = null;
 
         if (!ct.IsCancellationRequested)
             _ = EnterDiscoveryAsync(ct);
@@ -192,6 +207,7 @@ public class RevvReceiver : IAsyncDisposable
         try { _discoveryListener?.Close(); } catch { }
         try { _dataListener?.Close(); } catch { }
         try { _echoSender?.Close(); } catch { }
+        try { _rumbleSender?.Close(); } catch { }
         _discoveryListener = null;
         _dataListener = null;
         _echoSender = null;

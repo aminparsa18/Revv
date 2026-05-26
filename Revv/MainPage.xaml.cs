@@ -12,6 +12,7 @@ public partial class MainPage : ContentPage
     private bool _isConnected = false;
     private bool _pedalsEnabled = false;
     private CancellationTokenSource? _pulseCts;
+    private float _smoothedSpeedKmh = 0f;
 
 #if ANDROID
     private Android.Net.Wifi.WifiManager? _wifiManager;
@@ -97,6 +98,48 @@ public partial class MainPage : ContentPage
 
         _broadcaster.LatencyUpdated += (_, ms) =>
             MainThread.BeginInvokeOnMainThread(() => UpdateLatency(ms));
+
+        _broadcaster.RumbleReceived += OnRumbleReceived;
+    }
+
+    private void OnRumbleReceived(object? sender, (byte Large, byte Small) e)
+    {
+        // Derive speed from large motor (road vibration intensity proxy, 0–300 km/h)
+        float rawKmh = e.Large / 255f * 300f;
+        _smoothedSpeedKmh = _smoothedSpeedKmh * 0.85f + rawKmh * 0.15f;
+        int displayKmh = (int)_smoothedSpeedKmh;
+        MainThread.BeginInvokeOnMainThread(() => SpeedGauge.SetSpeed(displayKmh));
+
+        byte amplitude = Math.Max(e.Large, e.Small);
+
+#if ANDROID
+        try
+        {
+            var vibrator = Android.App.Application.Context
+                .GetSystemService(Android.Content.Context.VibratorService)
+                as Android.OS.Vibrator;
+            if (vibrator?.HasVibrator != true) return;
+
+            if (amplitude == 0)
+            {
+                vibrator.Cancel();
+                return;
+            }
+
+            if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.O)
+            {
+                var effect = Android.OS.VibrationEffect.CreateOneShot(80, amplitude);
+                vibrator.Vibrate(effect);
+            }
+            else
+            {
+#pragma warning disable CA1422
+                vibrator.Vibrate(80);
+#pragma warning restore CA1422
+            }
+        }
+        catch { }
+#endif
     }
 
     // -------------------------------------------------------------------------
@@ -143,6 +186,8 @@ public partial class MainPage : ContentPage
             StatusLabel.TextColor = Color.FromArgb("#555555");
             LatencyValue.Text = "—";
             LatencyValue.TextColor = Color.FromArgb("#555555");
+            _smoothedSpeedKmh = 0f;
+            SpeedGauge.SetSpeed(0);
             StartStatusPulse();
 
             if (_pedalsEnabled)
@@ -276,10 +321,24 @@ public partial class MainPage : ContentPage
 
     private void OnDoubleTapped(object? sender, TappedEventArgs e) => _steering.Recenter();
 
-    private void OnSettingsToggled(object? sender, EventArgs e)
+    private bool _panelAnimating;
+
+    private async void OnSettingsToggled(object? sender, EventArgs e)
     {
+        if (_panelAnimating) return;
+        _panelAnimating = true;
         _settingsOpen = !_settingsOpen;
-        SettingsPanel.IsVisible = _settingsOpen;
+
+        View incoming = _settingsOpen ? SettingsPanel : AttitudePanel;
+        View outgoing = _settingsOpen ? AttitudePanel : SettingsPanel;
+
+        incoming.Opacity = 0;
+        incoming.IsVisible = true;
+
+        await Task.WhenAll(outgoing.FadeToAsync(0, 220), incoming.FadeToAsync(1, 220));
+
+        outgoing.IsVisible = false;
+        _panelAnimating = false;
     }
 
     private void OnSensitivityChanged(object? sender, ValueChangedEventArgs e)
@@ -299,6 +358,7 @@ public partial class MainPage : ContentPage
         _steering.Recenter();
         _settingsOpen = false;
         SettingsPanel.IsVisible = false;
+        AttitudePanel.IsVisible = true;
     }
 
     // -------------------------------------------------------------------------

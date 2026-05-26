@@ -38,9 +38,10 @@
         cluster frame overlay drawn on top (InputTransparent so
         touches fall through to the content beneath).
     -->
-    <Grid Padding="0">
+    <Grid Padding="0" ColumnDefinitions="*,*">
+      
 
-        <Grid RowDefinitions="Auto,Auto,*" Padding="0">
+        <Grid RowDefinitions="Auto,*" Padding="0" Grid.ColumnSpan="2">
 
             <!-- ═══════════════════════════════════════════════════════ -->
             <!-- ROW 0 — Top bar                                         -->
@@ -59,7 +60,7 @@
                  Margin="0,12,0,0"
                 HorizontalOptions="Center"
                 VerticalOptions="Center">
-                    <StackLayout Orientation="Horizontal" Spacing="7">
+                    <HorizontalStackLayout Spacing="7">
                         <Ellipse
                         x:Name="StatusDot"
                         Fill="{StaticResource TextMuted}"
@@ -73,7 +74,7 @@
                         Text="SEARCHING..."
                         TextColor="{StaticResource TextMuted}"
                         VerticalOptions="Center" />
-                    </StackLayout>
+                    </HorizontalStackLayout>
                 </Frame>
 
                 <Grid
@@ -139,89 +140,14 @@
             </Grid>
 
             <!-- ═══════════════════════════════════════════════════════ -->
-            <!-- ROW 1 — Settings panel (collapsed by default)           -->
+            <!-- ROW 1 — Driving area / Settings panel (swap on toggle)  -->
             <!-- ═══════════════════════════════════════════════════════ -->
-            <Frame
-            x:Name="SettingsPanel"
-            Grid.Row="1"
-            Padding="20,12"
-            BackgroundColor="{StaticResource Surface}"
-            BorderColor="{StaticResource SurfaceBorder}"
-            CornerRadius="0"
-            IsVisible="False">
-                <Grid ColumnDefinitions="*,*,Auto" ColumnSpacing="24">
+            <Grid Grid.Row="1">
 
-                    <StackLayout Grid.Column="0" Spacing="4">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <Label
-                            Grid.Column="0"
-                            FontSize="10"
-                            Style="{StaticResource LabelMono}"
-                            Text="SENSITIVITY"
-                            TextColor="{StaticResource TextMuted}" />
-                            <Label
-                            x:Name="SensitivityValueLabel"
-                            Grid.Column="1"
-                            FontSize="10"
-                            Style="{StaticResource LabelMono}"
-                            Text="1.0"
-                            TextColor="{StaticResource AccentRed}" />
-                        </Grid>
-                        <Slider
-                        x:Name="SensitivitySlider"
-                        Maximum="3.0"
-                        Minimum="0.1"
-                        Style="{StaticResource SliderStyle}"
-                        Value="1.0"
-                        ValueChanged="OnSensitivityChanged" />
-                    </StackLayout>
+                  
 
-                    <StackLayout Grid.Column="1" Spacing="4">
-                        <Grid ColumnDefinitions="*,Auto">
-                            <Label
-                            Grid.Column="0"
-                            FontSize="10"
-                            Style="{StaticResource LabelMono}"
-                            Text="RANGE"
-                            TextColor="{StaticResource TextMuted}" />
-                            <Label
-                            x:Name="RangeValueLabel"
-                            Grid.Column="1"
-                            FontSize="10"
-                            Style="{StaticResource LabelMono}"
-                            Text="45°"
-                            TextColor="{StaticResource AccentRed}" />
-                        </Grid>
-                        <Slider
-                        x:Name="RangeSlider"
-                        Maximum="90"
-                        Minimum="15"
-                        Style="{StaticResource SliderStyle}"
-                        Value="45"
-                        ValueChanged="OnRangeChanged" />
-                    </StackLayout>
-
-                    <Button
-                    x:Name="RecenterButton"
-                    Grid.Column="2"
-                    Padding="16,0"
-                    BackgroundColor="{StaticResource SurfaceHigh}"
-                    BorderColor="{StaticResource AccentRed}"
-                    BorderWidth="1"
-                    Clicked="OnRecenterClicked"
-                    CornerRadius="6"
-                    FontAttributes="Bold"
-                    FontSize="10"
-                    Text="RECENTER"
-                    TextColor="{StaticResource TextPrimary}"
-                    VerticalOptions="Center" />
-                </Grid>
-            </Frame>
-
-            <!-- ═══════════════════════════════════════════════════════ -->
-            <!-- ROW 2 — Driving area + stats bar                        -->
-            <!-- ═══════════════════════════════════════════════════════ -->
-            <Grid Grid.Row="2" RowDefinitions="*,Auto" >
+                <!-- Driving area — visible by default -->
+            <Grid x:Name="DrivingArea" RowDefinitions="*,Auto" >
 
                 <!-- Sub-row 0: [Brake | Horizon | Throttle] -->
                 <Grid
@@ -229,7 +155,7 @@
                 ColumnDefinitions="*,Auto,*"
                 IsClippedToBounds="True">
 
-                    <!-- ─────────────────────────────────────────────── -->
+                        <!-- ─────────────────────────────────────────────── -->
                     <!-- BRAKE PANEL                                      -->
                     <!-- ─────────────────────────────────────────────── -->
                     <Grid
@@ -254,11 +180,11 @@
                         VerticalOptions="Fill"
                         Margin="0,0,0,24"/>
                     </Grid>
-
-                    <!-- ─────────────────────────────────────────────── -->
+                       
+                        <!-- ─────────────────────────────────────────────── -->
                     <!-- CENTER — SkiaSharp Attitude Indicator            -->
                     <!-- ─────────────────────────────────────────────── -->
-                    <Grid Grid.Column="1" IsClippedToBounds="True">
+                    <Grid x:Name="AttitudePanel" Grid.Column="1" IsClippedToBounds="True">
 
                         <VerticalStackLayout
                         HorizontalOptions="Fill"
@@ -267,10 +193,10 @@
 
                             <local:AttitudeSKView
                             x:Name="AttitudeView"
-                            HeightRequest="270"
+                            HeightRequest="240"
                             HorizontalOptions="Center"
                             InputTransparent="True"
-                            WidthRequest="270" />
+                            WidthRequest="240" />
 
                             <!-- Angle readout below circle -->
                             <Label
@@ -299,7 +225,87 @@
                         </Grid>
                     </Grid>
 
-                    <!-- ─────────────────────────────────────────────── -->
+                       
+                        <!-- Settings panel — full-screen column, hidden by default -->
+                        <Grid  Grid.Column="1"
+                               x:Name="SettingsPanel"
+                               IsVisible="False"
+                               Padding="32,0"
+                               IsClippedToBounds="True"
+                               WidthRequest="270"
+                               VerticalOptions="Start">
+
+                            <VerticalStackLayout
+                               Spacing="24"
+                               VerticalOptions="Center">
+
+                                <VerticalStackLayout Spacing="10">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label
+                           Grid.Column="0"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="SENSITIVITY"
+                           TextColor="{StaticResource TextMuted}" />
+                                        <Label
+                           x:Name="SensitivityValueLabel"
+                           Grid.Column="1"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="1.0"
+                           TextColor="{StaticResource AccentRed}" />
+                                    </Grid>
+                                    <Slider
+                       x:Name="SensitivitySlider"
+                       Maximum="3.0"
+                       Minimum="0.1"
+                       Style="{StaticResource SliderStyle}"
+                       Value="1.0"
+                       ValueChanged="OnSensitivityChanged" />
+                                </VerticalStackLayout>
+
+                                <VerticalStackLayout Spacing="10">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label
+                           Grid.Column="0"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="RANGE"
+                           TextColor="{StaticResource TextMuted}" />
+                                        <Label
+                           x:Name="RangeValueLabel"
+                           Grid.Column="1"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="45°"
+                           TextColor="{StaticResource AccentRed}" />
+                                    </Grid>
+                                    <Slider
+                       x:Name="RangeSlider"
+                       Maximum="90"
+                       Minimum="15"
+                       Style="{StaticResource SliderStyle}"
+                       Value="45"
+                       ValueChanged="OnRangeChanged" />
+                                </VerticalStackLayout>
+
+                                <Button
+                   x:Name="RecenterButton"
+                   Padding="0,14"
+                   BackgroundColor="{StaticResource SurfaceHigh}"
+                   BorderColor="{StaticResource AccentRed}"
+                   BorderWidth="1"
+                   Clicked="OnRecenterClicked"
+                   CornerRadius="6"
+                   FontAttributes="Bold"
+                   FontSize="11"
+                   Text="RECENTER"
+                   TextColor="{StaticResource TextPrimary}" />
+
+                            </VerticalStackLayout>
+                        </Grid>
+                    
+                        <!-- ─────────────────────────────────────────────── -->
                     <!-- THROTTLE PANEL                                   -->
                     <!-- ─────────────────────────────────────────────── -->
                     <Grid
@@ -334,7 +340,9 @@
                          InputTransparent="True"
                          VerticalOptions="Start"/>
 
-                    <!-- Signal -->
+                       
+
+                        <!-- Signal -->
                     <local:WifiSKView
                          x:Name="WifiView"
                          HeightRequest="48"
@@ -343,13 +351,12 @@
                          Margin="8,0,0,22"
                          HorizontalOptions="End"
                          InputTransparent="True"
-                         VerticalOptions="End" />
+                         VerticalOptions="Start" />
 
                     <!-- Latency -->
-                    <StackLayout
+                    <VerticalStackLayout
                          Grid.Column="0"
                          HorizontalOptions="End"
-                         Orientation="Vertical"
                          Spacing="2"
                          VerticalOptions="Start">
                             <Label
@@ -365,19 +372,37 @@
                              Style="{StaticResource LabelMono}"
                              Text="LATENCY"
                              TextColor="{StaticResource TextMuted}" />
-                        </StackLayout>
+                        </VerticalStackLayout>
 
                 </Grid>
 
             </Grid>
+            <!-- end DrivingArea -->
+
+            </Grid>
+            <!-- end Row 1 swap container -->
 
         </Grid>
         <!-- end inner content Grid -->
 
+        <!-- ─────────────────────────────────────────────── -->
+        <!-- SPEED GAUGE (rumble-derived)                     -->
+        <!-- ─────────────────────────────────────────────── -->
+        <local:SpeedSKView
+       x:Name="SpeedGauge"
+       Grid.Column="1"
+       WidthRequest="150"
+       HeightRequest="150"
+       Margin="42,0,0,16"
+       HorizontalOptions="Start"
+       InputTransparent="True"
+       VerticalOptions="End" />
+        
         <!-- ═══════════════════════════════════════════════════════ -->
         <!-- Cluster frame overlay — SkiaSharp, drawn on top         -->
         <!-- ═══════════════════════════════════════════════════════ -->
         <local:ClusterFrameSKView
+            Grid.ColumnSpan="2"
             HorizontalOptions="Fill"
             InputTransparent="True"
             VerticalOptions="Fill"/>

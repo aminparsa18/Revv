@@ -7,14 +7,27 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>revv.ico</ApplicationIcon>
+    <AssemblyName>Revv</AssemblyName>
+    <Version>1.0.0</Version>
+    <Authors>Amin Parsa</Authors>
+    <Copyright>Copyright © 2025 Amin Parsa</Copyright>
+    <Description>Turn your phone into a wireless steering wheel — no hardware, no cables.</Description>
+    <RepositoryUrl>https://github.com/aminparsa18/Revv</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\Revv.Shared\Revv.Shared.csproj" />
+    <None Include="revv.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
+    <PackageReference Include="SkiaSharp.Views.WindowsForms" Version="3.119.4" />
   </ItemGroup>
 
 </Project>
