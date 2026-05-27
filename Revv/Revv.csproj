@@ -14,7 +14,7 @@
 		<MauiXamlInflator>SourceGen</MauiXamlInflator>
 
 		<ApplicationTitle>Revv</ApplicationTitle>
-		<ApplicationId>com.companyname.revv</ApplicationId>
+		<ApplicationId>studio.parsoft.revv</ApplicationId>
 		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
 		<ApplicationVersion>1</ApplicationVersion>
 
