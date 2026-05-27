@@ -11,6 +11,9 @@ REVV streams motion data from your phone over LAN to a virtual Xbox 360 controll
 
 ## How it works
 
+<img width="3088" height="1440" alt="Screenshot_20260528_011410" src="https://github.com/user-attachments/assets/d800eea2-721c-4638-acd1-9a3521087db4" />
+
+
 Hold your phone in landscape and rotate it like a real steering wheel. The phone's orientation sensor feeds a fused absolute angle into a virtual Xbox 360 controller on the PC — games see it as real hardware and steer accordingly.
 
 ```
