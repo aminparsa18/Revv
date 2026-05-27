@@ -1,5 +1,8 @@
 # REVV
 
+<img width="1024" height="1024" alt="splash" src="https://github.com/user-attachments/assets/ad6c4d5e-1128-4735-bf5b-819e15574a0b" />
+
+
 **Turn your phone into a wireless steering wheel — no hardware, no cables.**
 
 REVV streams motion data from your phone over LAN to a virtual Xbox 360 controller on your PC. Any racing game that supports a controller works instantly, with no per-game setup.
