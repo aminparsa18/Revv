@@ -1,6 +1,6 @@
 # REVV
 
-<img width="1024" height="1024" alt="splash" src="https://github.com/user-attachments/assets/ad6c4d5e-1128-4735-bf5b-819e15574a0b" />
+<img width="128" height="128" alt="splash" src="https://github.com/user-attachments/assets/ad6c4d5e-1128-4735-bf5b-819e15574a0b" />
 
 
 **Turn your phone into a wireless steering wheel — no hardware, no cables.**
