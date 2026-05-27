@@ -19,6 +19,10 @@ jobs:
       - name: Build Windows app
         run: dotnet build Revv.Windows/Revv.Windows.csproj -c Release
 
+      - name: Run tests
+        run: dotnet test Revv.Shared/Revv.Shared.csproj -c Release
+        continue-on-error: true
+
   build-android:
     runs-on: ubuntu-latest
     steps:
