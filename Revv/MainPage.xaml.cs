@@ -1,5 +1,9 @@
+#if ANDROID
+using Android.OS;
+#endif
 using Revv.Shared;
 using Revv.Shared.Networking;
+using RevvBtn = Revv.Shared.Networking.RevvButtonMask;
 
 namespace Revv;
 
@@ -11,8 +15,9 @@ public partial class MainPage : ContentPage
     private bool _settingsOpen = false;
     private bool _isConnected = false;
     private bool _pedalsEnabled = false;
+    private bool _isPaused = false;
     private CancellationTokenSource? _pulseCts;
-    private float _smoothedSpeedKmh = 0f;
+    private long _lastUiUpdateMs;
 
 #if ANDROID
     private Android.Net.Wifi.WifiManager? _wifiManager;
@@ -77,7 +82,14 @@ public partial class MainPage : ContentPage
         _steering.SteeringChanged += (_, value) =>
         {
             _broadcaster.SetSteering(value);
-            MainThread.BeginInvokeOnMainThread(() => UpdateHorizonVisual(value));
+
+            // Throttle UI repaints to ~60 fps. Broadcaster always gets data at full gyro rate.
+            var now = System.Environment.TickCount64;
+            if (now - Interlocked.Read(ref _lastUiUpdateMs) >= 16)
+            {
+                Interlocked.Exchange(ref _lastUiUpdateMs, now);
+                MainThread.BeginInvokeOnMainThread(() => UpdateHorizonVisual(value));
+            }
         };
 
         _steering.Recentered += (_, _) =>
@@ -104,21 +116,18 @@ public partial class MainPage : ContentPage
 
     private void OnRumbleReceived(object? sender, (byte Large, byte Small) e)
     {
-        // Derive speed from large motor (road vibration intensity proxy, 0–300 km/h)
-        float rawKmh = e.Large / 255f * 300f;
-        _smoothedSpeedKmh = _smoothedSpeedKmh * 0.85f + rawKmh * 0.15f;
-        int displayKmh = (int)_smoothedSpeedKmh;
-        MainThread.BeginInvokeOnMainThread(() => SpeedGauge.SetSpeed(displayKmh));
-
         byte amplitude = Math.Max(e.Large, e.Small);
 
 #if ANDROID
         try
         {
-            var vibrator = Android.App.Application.Context
+            Vibrator? vibrator = Android.App.Application.Context
                 .GetSystemService(Android.Content.Context.VibratorService)
-                as Android.OS.Vibrator;
-            if (vibrator?.HasVibrator != true) return;
+                as Vibrator;
+            if (vibrator?.HasVibrator != true)
+            {
+                return;
+            }
 
             if (amplitude == 0)
             {
@@ -126,9 +135,9 @@ public partial class MainPage : ContentPage
                 return;
             }
 
-            if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.O)
+            if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
             {
-                var effect = Android.OS.VibrationEffect.CreateOneShot(80, amplitude);
+                var effect = VibrationEffect.CreateOneShot(80, amplitude);
                 vibrator.Vibrate(effect);
             }
             else
@@ -159,8 +168,8 @@ public partial class MainPage : ContentPage
 
     private async void FlashRecenterFeedback()
     {
-        await AttitudeView.ScaleTo(1.05, 80, Easing.CubicOut);
-        await AttitudeView.ScaleTo(1.0, 120, Easing.SpringIn);
+        await AttitudeView.ScaleToAsync(1.05, 80, Easing.CubicOut);
+        await AttitudeView.ScaleToAsync(1.0, 120, Easing.SpringIn);
     }
 
     // -------------------------------------------------------------------------
@@ -186,8 +195,6 @@ public partial class MainPage : ContentPage
             StatusLabel.TextColor = Color.FromArgb("#555555");
             LatencyValue.Text = "—";
             LatencyValue.TextColor = Color.FromArgb("#555555");
-            _smoothedSpeedKmh = 0f;
-            SpeedGauge.SetSpeed(0);
             StartStatusPulse();
 
             if (_pedalsEnabled)
@@ -321,6 +328,16 @@ public partial class MainPage : ContentPage
 
     private void OnDoubleTapped(object? sender, TappedEventArgs e) => _steering.Recenter();
 
+    private async void OnPauseClicked(object? sender, EventArgs e)
+    {
+        _isPaused = !_isPaused;
+        PauseButton.Source = _isPaused ? "play.svg" : "pause.svg";
+
+        _broadcaster.SetButton(RevvBtn.Start, true);
+        await Task.Delay(120);
+        _broadcaster.SetButton(RevvBtn.Start, false);
+    }
+
     private bool _panelAnimating;
 
     private async void OnSettingsToggled(object? sender, EventArgs e)
@@ -361,6 +378,21 @@ public partial class MainPage : ContentPage
         AttitudePanel.IsVisible = true;
     }
 
+    private void OnFaceButtonPressed(object? sender, FaceButton button)
+        => _broadcaster.SetButton(ToMask(button), true);
+
+    private void OnFaceButtonReleased(object? sender, FaceButton button)
+        => _broadcaster.SetButton(ToMask(button), false);
+
+    private static RevvBtn ToMask(FaceButton button) => button switch
+    {
+        FaceButton.A => RevvBtn.A,
+        FaceButton.B => RevvBtn.B,
+        FaceButton.X => RevvBtn.X,
+        FaceButton.Y => RevvBtn.Y,
+        _            => RevvBtn.None,
+    };
+
     // -------------------------------------------------------------------------
     // Pedals toggle
     // -------------------------------------------------------------------------
@@ -381,13 +413,18 @@ public partial class MainPage : ContentPage
             ThrottlePanel.Opacity      = 0;
             BrakePanel.IsVisible       = true;
             ThrottlePanel.IsVisible    = true;
+            FaceButtons.TranslationY   = -80;
+            FaceButtons.Opacity        = 0;
+            FaceButtons.IsVisible      = true;
 
             await Task.WhenAll(
                 PedalsThumb.TranslateTo(28, 0, 500, Easing.SpringOut),
                 BrakePanel.TranslateTo(0, 0, 380, Easing.SpringOut),
                 ThrottlePanel.TranslateTo(0, 0, 380, Easing.SpringOut),
                 BrakePanel.FadeTo(1, 250),
-                ThrottlePanel.FadeTo(1, 250)
+                ThrottlePanel.FadeTo(1, 250),
+                FaceButtons.TranslateTo(0, 0, 380, Easing.SpringOut),
+                FaceButtons.FadeTo(1, 250)
             );
         }
         else
@@ -403,7 +440,9 @@ public partial class MainPage : ContentPage
                 BrakePanel.TranslateTo(-80, 0, 220, Easing.CubicIn),
                 ThrottlePanel.TranslateTo(80, 0, 220, Easing.CubicIn),
                 BrakePanel.FadeTo(0, 180),
-                ThrottlePanel.FadeTo(0, 180)
+                ThrottlePanel.FadeTo(0, 180),
+                FaceButtons.TranslateTo(0, -80, 220, Easing.CubicIn),
+                FaceButtons.FadeTo(0, 180)
             );
 
             BrakePanel.IsVisible       = false;
@@ -412,6 +451,9 @@ public partial class MainPage : ContentPage
             ThrottlePanel.TranslationX = 0;
             BrakePanel.Opacity         = 1;
             ThrottlePanel.Opacity      = 1;
+            FaceButtons.IsVisible      = false;
+            FaceButtons.TranslationY   = 0;
+            FaceButtons.Opacity        = 1;
         }
     }
 

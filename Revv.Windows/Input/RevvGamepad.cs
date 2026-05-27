@@ -2,6 +2,7 @@ using System.Diagnostics;
 using Nefarius.ViGEm.Client;
 using Nefarius.ViGEm.Client.Targets;
 using Nefarius.ViGEm.Client.Targets.Xbox360;
+using Revv.Shared.Networking;
 
 namespace Revv.Windows.Input;
 
@@ -28,9 +29,10 @@ public class RevvGamepad : IDisposable
     private bool _disposed = false;
 
     // Latest values received from phone — written by network thread, read by render timer
-    private volatile float _targetSteering = 0f;
-    private volatile float _targetThrottle = 0f;
-    private volatile float _targetBrake = 0f;
+    private volatile float  _targetSteering = 0f;
+    private volatile float  _targetThrottle = 0f;
+    private volatile float  _targetBrake    = 0f;
+    private volatile ushort _targetButtons  = 0;
 
     // 200 Hz render loop: dedicated thread with sleep+spin for deterministic timing
     private Thread? _renderThread;
@@ -50,13 +52,17 @@ public class RevvGamepad : IDisposable
     public void UpdateSpeed(float speedMs) => _speedMs = MathF.Max(0f, speedMs);
 
     // Last values actually submitted to ViGEm — skip report when unchanged
-    private short _lastSteerShort = short.MinValue; // sentinel forces first submit
-    private byte _lastThrottleByte = 0;
-    private byte _lastBrakeByte = 0;
+    private short  _lastSteerShort   = short.MinValue; // sentinel forces first submit
+    private byte   _lastThrottleByte = 0;
+    private byte   _lastBrakeByte    = 0;
+    private ushort _lastButtons      = 0;
 
     public void Connect()
     {
-        if (IsConnected) return;
+        if (IsConnected)
+        {
+            return;
+        }
 
         try
         {
@@ -84,7 +90,10 @@ public class RevvGamepad : IDisposable
 
     public void Disconnect()
     {
-        if (!IsConnected) return;
+        if (!IsConnected)
+        {
+            return;
+        }
 
         _renderRunning = false;
         _renderThread?.Join(200);
@@ -93,8 +102,7 @@ public class RevvGamepad : IDisposable
         try
         {
             ZeroAllInputs();
-            if (_controller is not null)
-                _controller.FeedbackReceived -= OnFeedbackReceived;
+            _controller?.FeedbackReceived -= OnFeedbackReceived;
             _lastLargeMotor = 0;
             _lastSmallMotor = 0;
             _controller?.Disconnect();
@@ -117,42 +125,70 @@ public class RevvGamepad : IDisposable
     // Called by network thread — just updates the target, render loop applies it
     public void SetSteering(float normalizedValue)
     {
-        if (!IsConnected) return;
+        if (!IsConnected)
+        {
+            return;
+        }
+
         _targetSteering = Math.Clamp(normalizedValue, -1f, 1f);
     }
 
     public void SetThrottle(float normalizedValue)
     {
-        if (!IsConnected) return;
+        if (!IsConnected)
+        {
+            return;
+        }
+
         _targetThrottle = Math.Clamp(normalizedValue, 0f, 1f);
     }
 
     public void SetBrake(float normalizedValue)
     {
-        if (!IsConnected) return;
+        if (!IsConnected)
+        {
+            return;
+        }
+
         _targetBrake = Math.Clamp(normalizedValue, 0f, 1f);
+    }
+
+    public void SetButtons(ushort buttons)
+    {
+        if (!IsConnected) return;
+        _targetButtons = buttons;
     }
 
     public void ZeroAllInputs()
     {
         _targetSteering = 0f;
         _targetThrottle = 0f;
-        _targetBrake = 0f;
+        _targetBrake    = 0f;
+        _targetButtons  = 0;
         CurrentSteering = 0f;
         CurrentThrottle = 0f;
-        CurrentBrake = 0f;
+        CurrentBrake    = 0f;
         _steeringVelocity = 0f;
 
         if (!IsConnected || _controller is null) return;
         _controller.SetAxisValue(Xbox360Axis.LeftThumbX, 0);
         _controller.SetSliderValue(Xbox360Slider.RightTrigger, 0);
         _controller.SetSliderValue(Xbox360Slider.LeftTrigger, 0);
+        _controller.SetButtonState(Xbox360Button.A,     false);
+        _controller.SetButtonState(Xbox360Button.B,     false);
+        _controller.SetButtonState(Xbox360Button.X,     false);
+        _controller.SetButtonState(Xbox360Button.Y,     false);
+        _controller.SetButtonState(Xbox360Button.Start, false);
         _controller.SubmitReport();
     }
 
     private void OnFeedbackReceived(object sender, Xbox360FeedbackReceivedEventArgs e)
     {
-        if (e.LargeMotor == _lastLargeMotor && e.SmallMotor == _lastSmallMotor) return;
+        if (e.LargeMotor == _lastLargeMotor && e.SmallMotor == _lastSmallMotor)
+        {
+            return;
+        }
+
         _lastLargeMotor = e.LargeMotor;
         _lastSmallMotor = e.SmallMotor;
         RumbleReceived?.Invoke(this, (e.LargeMotor, e.SmallMotor));
@@ -161,7 +197,7 @@ public class RevvGamepad : IDisposable
     private void RenderLoop()
     {
         long targetTicks = Stopwatch.Frequency / 200; // 5 ms per tick at 200 Hz
-        var sw = Stopwatch.StartNew();
+        Stopwatch sw = Stopwatch.StartNew();
         long nextTick = sw.ElapsedTicks;
 
         while (_renderRunning)
@@ -174,17 +210,27 @@ public class RevvGamepad : IDisposable
             if (remaining > 0)
             {
                 long sleepMs = remaining * 1000 / Stopwatch.Frequency - 1;
-                if (sleepMs > 0) Thread.Sleep((int)sleepMs);
-                while (sw.ElapsedTicks < nextTick) Thread.SpinWait(1);
+                if (sleepMs > 0)
+                {
+                    Thread.Sleep((int)sleepMs);
+                }
+
+                while (sw.ElapsedTicks < nextTick)
+                {
+                    Thread.SpinWait(1);
+                }
             }
         }
     }
 
     private void OnRenderTick()
     {
-        if (!IsConnected || _controller is null) return;
+        if (!IsConnected || _controller is null)
+        {
+            return;
+        }
 
-        var now = Stopwatch.GetTimestamp();
+        long now = Stopwatch.GetTimestamp();
         float dt = (float)(now - _prevTickTimestamp) / Stopwatch.Frequency;
         _prevTickTimestamp = now;
 
@@ -204,22 +250,35 @@ public class RevvGamepad : IDisposable
         float speedScale = 1f / (1f + _speedMs * SpeedSensitivity);
         steerOut *= speedScale;
 
-        short steerShort = (short)(-Math.Clamp(steerOut, -1f, 1f) * short.MaxValue);
-        byte throttleByte = (byte)(CurrentThrottle * 255f);
-        byte brakeByte = (byte)(CurrentBrake * 255f);
+        short  steerShort    = (short)(-Math.Clamp(steerOut, -1f, 1f) * short.MaxValue);
+        byte   throttleByte  = (byte)(CurrentThrottle * 255f);
+        byte   brakeByte     = (byte)(CurrentBrake * 255f);
+        ushort buttons       = _targetButtons;
 
-        if (steerShort == _lastSteerShort && throttleByte == _lastThrottleByte && brakeByte == _lastBrakeByte)
+        if (steerShort == _lastSteerShort && throttleByte == _lastThrottleByte
+            && brakeByte == _lastBrakeByte && buttons == _lastButtons)
             return;
 
-        _lastSteerShort = steerShort;
+        _lastSteerShort   = steerShort;
         _lastThrottleByte = throttleByte;
-        _lastBrakeByte = brakeByte;
+        _lastBrakeByte    = brakeByte;
 
         try
         {
             _controller.SetAxisValue(Xbox360Axis.LeftThumbX, steerShort);
             _controller.SetSliderValue(Xbox360Slider.RightTrigger, throttleByte);
             _controller.SetSliderValue(Xbox360Slider.LeftTrigger, brakeByte);
+
+            if (buttons != _lastButtons)
+            {
+                _lastButtons = buttons;
+                _controller.SetButtonState(Xbox360Button.A,     (buttons & (ushort)RevvButtonMask.A)     != 0);
+                _controller.SetButtonState(Xbox360Button.B,     (buttons & (ushort)RevvButtonMask.B)     != 0);
+                _controller.SetButtonState(Xbox360Button.X,     (buttons & (ushort)RevvButtonMask.X)     != 0);
+                _controller.SetButtonState(Xbox360Button.Y,     (buttons & (ushort)RevvButtonMask.Y)     != 0);
+                _controller.SetButtonState(Xbox360Button.Start, (buttons & (ushort)RevvButtonMask.Start) != 0);
+            }
+
             _controller.SubmitReport();
         }
         catch { /* ViGEm gone — Disconnect() will be called by the session */ }
@@ -227,7 +286,11 @@ public class RevvGamepad : IDisposable
 
     public void Dispose()
     {
-        if (_disposed) return;
+        if (_disposed)
+        {
+            return;
+        }
+
         Disconnect();
         _disposed = true;
         GC.SuppressFinalize(this);

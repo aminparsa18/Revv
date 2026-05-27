@@ -124,19 +124,35 @@
                     </Grid.GestureRecognizers>
                 </Grid>
 
-                <ImageButton
-                    x:Name="SettingsButton"
+                <Grid
                     Grid.Column="3"
-                    Padding="0"
-                    BackgroundColor="Transparent"
-                    BorderColor="Transparent"
-                    Clicked="OnSettingsToggled"
-                    HorizontalOptions="Start"
                     Margin="56,20,0,0"
-                    HeightRequest="26"
-                    Source="settings.png"
-                    VerticalOptions="Center"
-                    WidthRequest="26" />
+                    ColumnSpacing="14"
+                    ColumnDefinitions="*,*"
+                    HorizontalOptions="Start"
+                    VerticalOptions="Center">
+                    <ImageButton
+                        x:Name="SettingsButton"
+                        Padding="0"
+                        BackgroundColor="Transparent"
+                        BorderColor="Transparent"
+                        Clicked="OnSettingsToggled"
+                        HeightRequest="22"
+                        Source="settings.png"
+                        VerticalOptions="Center"
+                        WidthRequest="22" />
+                    <ImageButton
+                         x:Name="PauseButton"
+                         Grid.Column="1"
+                         Padding="0,6,0,0"
+                         BackgroundColor="Transparent"
+                         BorderColor="Transparent"
+                         Clicked="OnPauseClicked"
+                         HeightRequest="20"
+                         Source="pause.svg"
+                         VerticalOptions="Center"
+                         WidthRequest="20" />   
+                </Grid>
             </Grid>
 
             <!-- ═══════════════════════════════════════════════════════ -->
@@ -149,7 +165,7 @@
                 <!-- Driving area — visible by default -->
             <Grid x:Name="DrivingArea" RowDefinitions="*,Auto" >
 
-                <!-- Sub-row 0: [Brake | Horizon | Throttle] -->
+                    <!-- Sub-row 0: [Brake | Horizon | Throttle] -->
                 <Grid
                 Grid.Row="0"
                 ColumnDefinitions="*,Auto,*"
@@ -225,14 +241,34 @@
                         </Grid>
                     </Grid>
 
-                       
+                        <local:FaceButtonsSKView
+                            x:Name="FaceButtons"
+                            WidthRequest="94"
+                            HeightRequest="94"
+                            VerticalOptions="Start"
+                            Grid.Column="2"
+                            Margin="-14,0,12,12"
+                            HorizontalOptions="Start"
+                            IsVisible="False"
+                            ButtonPressed="OnFaceButtonPressed"
+                            ButtonReleased="OnFaceButtonReleased" />
+
+                        <local:RecenterSKView
+                            x:Name="RecenterButton"
+                            Grid.Column="2"
+                            Margin="16,32,0,6"
+                            HeightRequest="48"
+                            WidthRequest="48"
+                            HorizontalOptions="Start"
+                            Clicked="OnRecenterClicked" />  
+
                         <!-- Settings panel — full-screen column, hidden by default -->
                         <Grid  Grid.Column="1"
                                x:Name="SettingsPanel"
                                IsVisible="False"
                                Padding="32,0"
                                IsClippedToBounds="True"
-                               WidthRequest="270"
+                               WidthRequest="240"
                                VerticalOptions="Start">
 
                             <VerticalStackLayout
@@ -289,18 +325,7 @@
                        ValueChanged="OnRangeChanged" />
                                 </VerticalStackLayout>
 
-                                <Button
-                   x:Name="RecenterButton"
-                   Padding="0,14"
-                   BackgroundColor="{StaticResource SurfaceHigh}"
-                   BorderColor="{StaticResource AccentRed}"
-                   BorderWidth="1"
-                   Clicked="OnRecenterClicked"
-                   CornerRadius="6"
-                   FontAttributes="Bold"
-                   FontSize="11"
-                   Text="RECENTER"
-                   TextColor="{StaticResource TextPrimary}" />
+                               
 
                             </VerticalStackLayout>
                         </Grid>
@@ -340,7 +365,7 @@
                          InputTransparent="True"
                          VerticalOptions="Start"/>
 
-                       
+ 
 
                         <!-- Signal -->
                     <local:WifiSKView
@@ -351,7 +376,7 @@
                          Margin="8,0,0,22"
                          HorizontalOptions="End"
                          InputTransparent="True"
-                         VerticalOptions="Start" />
+                         VerticalOptions="End" />
 
                     <!-- Latency -->
                     <VerticalStackLayout
@@ -388,7 +413,7 @@
         <!-- ─────────────────────────────────────────────── -->
         <!-- SPEED GAUGE (rumble-derived)                     -->
         <!-- ─────────────────────────────────────────────── -->
-        <local:SpeedSKView
+        <!--<local:SpeedSKView
        x:Name="SpeedGauge"
        Grid.Column="1"
        WidthRequest="150"
@@ -396,7 +421,7 @@
        Margin="42,0,0,16"
        HorizontalOptions="Start"
        InputTransparent="True"
-       VerticalOptions="End" />
+       VerticalOptions="End" />-->
         
         <!-- ═══════════════════════════════════════════════════════ -->
         <!-- Cluster frame overlay — SkiaSharp, drawn on top         -->

@@ -10,16 +10,18 @@ public class RevvReceiver : IAsyncDisposable
 
     public ReceiverState State { get; private set; } = ReceiverState.Idle;
     public string? ConnectedPhoneIp { get; private set; }
-    public float LatestSteering { get; private set; } = 0f;
-    public float LatestThrottle { get; private set; } = 0f;
-    public float LatestBrake { get; private set; } = 0f;
-    public long PacketsReceived { get; private set; } = 0;
+    public float  LatestSteering { get; private set; } = 0f;
+    public float  LatestThrottle { get; private set; } = 0f;
+    public float  LatestBrake    { get; private set; } = 0f;
+    public ushort LatestButtons  { get; private set; } = 0;
+    public long   PacketsReceived { get; private set; } = 0;
 
-    public event EventHandler<string>? PhoneConnected;
-    public event EventHandler? PhoneDisconnected;
-    public event EventHandler<float>? SteeringReceived;
-    public event EventHandler<float>? ThrottleReceived;
-    public event EventHandler<float>? BrakeReceived;
+    public event EventHandler<string>?  PhoneConnected;
+    public event EventHandler?          PhoneDisconnected;
+    public event EventHandler<float>?   SteeringReceived;
+    public event EventHandler<float>?   ThrottleReceived;
+    public event EventHandler<float>?   BrakeReceived;
+    public event EventHandler<ushort>?  ButtonsReceived;
     public event EventHandler<Exception>? ErrorOccurred;
 
     private UdpClient? _discoveryListener;
@@ -54,10 +56,11 @@ public class RevvReceiver : IAsyncDisposable
         _cts?.Cancel();
         await Task.Delay(100);
         Cleanup();
-        State = ReceiverState.Idle;
+        State          = ReceiverState.Idle;
         LatestSteering = 0f;
         LatestThrottle = 0f;
-        LatestBrake = 0f;
+        LatestBrake    = 0f;
+        LatestButtons  = 0;
     }
 
     private async Task EnterDiscoveryAsync(CancellationToken ct)
@@ -165,13 +168,15 @@ public class RevvReceiver : IAsyncDisposable
                 var packet = RevvPacket.FromBytes(latestBuffer);
                 LatestSteering = packet.SteeringValue;
                 LatestThrottle = packet.ThrottleValue;
-                LatestBrake = packet.BrakeValue;
+                LatestBrake    = packet.BrakeValue;
+                LatestButtons  = packet.Buttons;
                 PacketsReceived++;
                 _lastPacketTime = DateTime.UtcNow;
 
                 SteeringReceived?.Invoke(this, packet.SteeringValue);
                 ThrottleReceived?.Invoke(this, packet.ThrottleValue);
                 BrakeReceived?.Invoke(this, packet.BrakeValue);
+                ButtonsReceived?.Invoke(this, packet.Buttons);
             }
         }
         catch (OperationCanceledException) { }
@@ -188,7 +193,8 @@ public class RevvReceiver : IAsyncDisposable
 
         LatestSteering = 0f;
         LatestThrottle = 0f;
-        LatestBrake = 0f;
+        LatestBrake    = 0f;
+        LatestButtons  = 0;
         PhoneDisconnected?.Invoke(this, EventArgs.Empty);
 
         try { _dataListener?.Close(); } catch { }

@@ -27,7 +27,7 @@ public class SteeringController
     public float CenterAssist { get; set; } = 0.02f;
 
     /// <summary>When true, RangeDegrees auto-calibrates to the user's actual rotation extremes. Resets on Recenter().</summary>
-    public bool AutoCalibrate { get; set; } = true;
+    public bool AutoCalibrate { get; set; } = false;
 
     // -------------------------------------------------------------------------
     // State (read-only diagnostics)

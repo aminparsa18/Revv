@@ -27,7 +27,7 @@ public static class AttitudeRenderer
         DrawBezelEdge(canvas, cx, cy, R, br);
     }
 
-    private static void DrawOuterGlow(SKCanvas canvas, float cx, float cy, float R)
+    public static void DrawOuterGlow(SKCanvas canvas, float cx, float cy, float R)
     {
         using var shader = SKShader.CreateRadialGradient(
             new SKPoint(cx, cy), R * 1.07f,
@@ -44,7 +44,7 @@ public static class AttitudeRenderer
         canvas.DrawCircle(cx, cy, R * 1.07f, paint);
     }
 
-    private static void DrawBezel(SKCanvas canvas, float cx, float cy, float R, float br)
+    public static void DrawBezel(SKCanvas canvas, float cx, float cy, float R, float br)
     {
         using (var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill })
         {
@@ -79,16 +79,10 @@ public static class AttitudeRenderer
         canvas.DrawCircle(cx, cy, br + 2.5f, innerShadow);
     }
 
-    private static void DrawHorizonBall(SKCanvas canvas, float cx, float cy, float br, float rollDeg)
+    // The inner content of the horizon ball — drawn without rotation applied.
+    // Callers that cache this should apply clip + RotateDegrees before drawing.
+    public static void DrawHorizonContent(SKCanvas canvas, float cx, float cy, float br)
     {
-        canvas.Save();
-
-        using var clip = new SKPath();
-        clip.AddCircle(cx, cy, br - 1.5f);
-        canvas.ClipPath(clip);
-
-        canvas.RotateDegrees(rollDeg, cx, cy);
-
         using (var paint = new SKPaint { IsAntialias = true })
         {
             using var sh = SKShader.CreateLinearGradient(
@@ -132,8 +126,156 @@ public static class AttitudeRenderer
             StrokeWidth = 2.5f, Color = new SKColor(0xFF, 0x95, 0x00),
         })
             canvas.DrawLine(cx - br, cy, cx + br, cy, paint);
+    }
 
+    public static void DrawSphereOverlay(SKCanvas canvas, float cx, float cy, float br)
+    {
+        using var vigShader = SKShader.CreateRadialGradient(
+            new SKPoint(cx, cy), br,
+            new[]
+            {
+                SKColors.Transparent, SKColors.Transparent,
+                new SKColor(0, 0, 0, 70),
+                new SKColor(0, 0, 0, 160),
+            },
+            new[] { 0f, 0.68f, 0.86f, 1.0f },
+            SKShaderTileMode.Clamp);
+        using var vigPaint = new SKPaint { IsAntialias = true, Shader = vigShader };
+        canvas.DrawCircle(cx, cy, br, vigPaint);
+
+        using var specShader = SKShader.CreateRadialGradient(
+            new SKPoint(cx - br * 0.12f, cy - br * 0.52f), br * 0.68f,
+            new[] { new SKColor(0xFF, 0xFF, 0xFF, 22), SKColors.Transparent },
+            null, SKShaderTileMode.Clamp);
+        using var specPaint = new SKPaint { IsAntialias = true, Shader = specShader };
+        canvas.DrawCircle(cx, cy, br, specPaint);
+    }
+
+    public static void DrawRollScale(SKCanvas canvas, float cx, float cy, float R, float br)
+    {
+        float bz = R - br;
+
+        using var paint = new SKPaint
+        {
+            IsAntialias = true, Style = SKPaintStyle.Stroke,
+            StrokeCap = SKStrokeCap.Round,
+        };
+
+        for (int deg = 0; deg < 360; deg += 5)
+        {
+            bool major = deg % 30 == 0;
+            bool mid   = deg % 10 == 0 && !major;
+
+            float lenFrac = major ? 0.58f : mid ? 0.34f : 0.18f;
+            float thick   = major ? 2.2f  : mid ? 1.3f  : 0.85f;
+            byte  alpha   = major ? (byte)205 : mid ? (byte)160 : (byte)95;
+
+            float rad = (deg - 90f) * MathF.PI / 180f;
+            float cos = MathF.Cos(rad);
+            float sin = MathF.Sin(rad);
+
+            float midR = br + bz * 0.5f;
+            float half = bz * lenFrac * 0.5f;
+            float r1 = midR - half;
+            float r2 = midR + half;
+
+            paint.StrokeWidth = thick;
+            paint.Color = new SKColor(0xCC, 0xCC, 0xDC, alpha);
+            canvas.DrawLine(cx + cos * r1, cy + sin * r1, cx + cos * r2, cy + sin * r2, paint);
+        }
+    }
+
+    // The rotating orange bank pointer — drawn with rollDeg applied.
+    public static void DrawRotatingPointer(SKCanvas canvas, float cx, float cy, float R, float br, float rollDeg)
+    {
+        float bz = R - br;
+        canvas.Save();
+        canvas.RotateDegrees(rollDeg, cx, cy);
+        float rW = bz * 0.46f;
+        float rH = bz * 0.50f;
+        using var path = new SKPath();
+        path.MoveTo(cx, cy - br + 1f);
+        path.LineTo(cx - rW / 2, cy - br - rH);
+        path.LineTo(cx + rW / 2, cy - br - rH);
+        path.Close();
+        using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = new SKColor(0xFF, 0xA0, 0x00, 225) };
+        canvas.DrawPath(path, fill);
         canvas.Restore();
+    }
+
+    // The fixed white reference indicator at the top of the bezel.
+    public static void DrawFixedIndicator(SKCanvas canvas, float cx, float cy, float R, float br)
+    {
+        float bz = R - br;
+        float fW = bz * 0.40f;
+        float fOuter = cy - R + bz * 0.14f;
+        float fInner = cy - br;
+        using var path = new SKPath();
+        path.MoveTo(cx, fInner);
+        path.LineTo(cx - fW / 2, fOuter);
+        path.LineTo(cx + fW / 2, fOuter);
+        path.Close();
+        using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = new SKColor(0xFF, 0xFF, 0xFF, 230) };
+        canvas.DrawPath(path, fill);
+    }
+
+    public static void DrawAircraftSymbol(SKCanvas canvas, float cx, float cy, float br)
+    {
+        float armLen  = br * 0.30f;
+        float armGap  = br * 0.13f;
+        float thick   = br * 0.030f;
+        float ringR   = br * 0.072f;
+        float dotR    = br * 0.044f;
+        var   amber   = new SKColor(0xFF, 0x95, 0x00);
+
+        using var paint = new SKPaint { IsAntialias = true, StrokeCap = SKStrokeCap.Round };
+
+        paint.Style = SKPaintStyle.Stroke;
+        paint.StrokeWidth = thick;
+        paint.Color = amber;
+        canvas.DrawLine(cx - armGap - armLen, cy, cx - armGap, cy, paint);
+        canvas.DrawLine(cx + armGap, cy, cx + armGap + armLen, cy, paint);
+
+        paint.StrokeWidth = thick * 0.80f;
+        canvas.DrawLine(cx, cy, cx, cy + dotR * 2.2f, paint);
+
+        paint.Style = SKPaintStyle.Stroke;
+        paint.StrokeWidth = thick * 0.65f;
+        canvas.DrawCircle(cx, cy, ringR, paint);
+
+        paint.Style = SKPaintStyle.Fill;
+        canvas.DrawCircle(cx, cy, dotR, paint);
+    }
+
+    public static void DrawBezelEdge(SKCanvas canvas, float cx, float cy, float R, float br)
+    {
+        using var shadow = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3f, Color = new SKColor(0, 0, 0, 210) };
+        canvas.DrawCircle(cx, cy, br, shadow);
+
+        using var accent = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, Color = new SKColor(0xFF, 0x95, 0x00, 38) };
+        canvas.DrawCircle(cx, cy, br - 2f, accent);
+
+        using var outer = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, Color = new SKColor(0x18, 0x18, 0x22, 120) };
+        canvas.DrawCircle(cx, cy, R - 1f, outer);
+    }
+
+    // --- private helpers ---
+
+    private static void DrawHorizonBall(SKCanvas canvas, float cx, float cy, float br, float rollDeg)
+    {
+        canvas.Save();
+        using var clip = new SKPath();
+        clip.AddCircle(cx, cy, br - 1.5f);
+        canvas.ClipPath(clip);
+        canvas.RotateDegrees(rollDeg, cx, cy);
+        DrawHorizonContent(canvas, cx, cy, br);
+        canvas.Restore();
+    }
+
+    private static void DrawBankPointer(SKCanvas canvas, float cx, float cy, float R, float br, float rollDeg)
+    {
+        DrawRotatingPointer(canvas, cx, cy, R, br, rollDeg);
+        DrawFixedIndicator(canvas, cx, cy, R, br);
     }
 
     private static void DrawPitchLadder(SKCanvas canvas, float cx, float cy, float br)
@@ -173,136 +315,5 @@ public static class AttitudeRenderer
                 canvas.DrawText(label, cx + hw + 5, ty, textPaint);
             }
         }
-    }
-
-    private static void DrawSphereOverlay(SKCanvas canvas, float cx, float cy, float br)
-    {
-        using var vigShader = SKShader.CreateRadialGradient(
-            new SKPoint(cx, cy), br,
-            new[]
-            {
-                SKColors.Transparent, SKColors.Transparent,
-                new SKColor(0, 0, 0, 70),
-                new SKColor(0, 0, 0, 160),
-            },
-            new[] { 0f, 0.68f, 0.86f, 1.0f },
-            SKShaderTileMode.Clamp);
-        using var vigPaint = new SKPaint { IsAntialias = true, Shader = vigShader };
-        canvas.DrawCircle(cx, cy, br, vigPaint);
-
-        using var specShader = SKShader.CreateRadialGradient(
-            new SKPoint(cx - br * 0.12f, cy - br * 0.52f), br * 0.68f,
-            new[] { new SKColor(0xFF, 0xFF, 0xFF, 22), SKColors.Transparent },
-            null, SKShaderTileMode.Clamp);
-        using var specPaint = new SKPaint { IsAntialias = true, Shader = specShader };
-        canvas.DrawCircle(cx, cy, br, specPaint);
-    }
-
-    private static void DrawRollScale(SKCanvas canvas, float cx, float cy, float R, float br)
-    {
-        float bz = R - br;
-
-        using var paint = new SKPaint
-        {
-            IsAntialias = true, Style = SKPaintStyle.Stroke,
-            StrokeCap = SKStrokeCap.Round,
-        };
-
-        for (int deg = 0; deg < 360; deg += 5)
-        {
-            bool major = deg % 30 == 0;
-            bool mid   = deg % 10 == 0 && !major;
-
-            float lenFrac = major ? 0.58f : mid ? 0.34f : 0.18f;
-            float thick   = major ? 2.2f  : mid ? 1.3f  : 0.85f;
-            byte  alpha   = major ? (byte)205 : mid ? (byte)160 : (byte)95;
-
-            float rad = (deg - 90f) * MathF.PI / 180f;
-            float cos = MathF.Cos(rad);
-            float sin = MathF.Sin(rad);
-
-            float midR = br + bz * 0.5f;
-            float half = bz * lenFrac * 0.5f;
-            float r1 = midR - half;
-            float r2 = midR + half;
-
-            paint.StrokeWidth = thick;
-            paint.Color = new SKColor(0xCC, 0xCC, 0xDC, alpha);
-            canvas.DrawLine(cx + cos * r1, cy + sin * r1, cx + cos * r2, cy + sin * r2, paint);
-        }
-    }
-
-    private static void DrawBankPointer(SKCanvas canvas, float cx, float cy, float R, float br, float rollDeg)
-    {
-        float bz = R - br;
-
-        canvas.Save();
-        canvas.RotateDegrees(rollDeg, cx, cy);
-        float rW = bz * 0.46f;
-        float rH = bz * 0.50f;
-        using (var path = new SKPath())
-        {
-            path.MoveTo(cx, cy - br + 1f);
-            path.LineTo(cx - rW / 2, cy - br - rH);
-            path.LineTo(cx + rW / 2, cy - br - rH);
-            path.Close();
-            using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = new SKColor(0xFF, 0xA0, 0x00, 225) };
-            canvas.DrawPath(path, fill);
-        }
-        canvas.Restore();
-
-        float fW = bz * 0.40f;
-        float fH = bz * 0.38f;
-        float fOuter = cy - R + bz * 0.14f;
-        float fInner = cy - br;
-        using (var path = new SKPath())
-        {
-            path.MoveTo(cx, fInner);
-            path.LineTo(cx - fW / 2, fOuter);
-            path.LineTo(cx + fW / 2, fOuter);
-            path.Close();
-            using var fill = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill, Color = new SKColor(0xFF, 0xFF, 0xFF, 230) };
-            canvas.DrawPath(path, fill);
-        }
-    }
-
-    private static void DrawAircraftSymbol(SKCanvas canvas, float cx, float cy, float br)
-    {
-        float armLen  = br * 0.30f;
-        float armGap  = br * 0.13f;
-        float thick   = br * 0.030f;
-        float ringR   = br * 0.072f;
-        float dotR    = br * 0.044f;
-        var   amber   = new SKColor(0xFF, 0x95, 0x00);
-
-        using var paint = new SKPaint { IsAntialias = true, StrokeCap = SKStrokeCap.Round };
-
-        paint.Style = SKPaintStyle.Stroke;
-        paint.StrokeWidth = thick;
-        paint.Color = amber;
-        canvas.DrawLine(cx - armGap - armLen, cy, cx - armGap, cy, paint);
-        canvas.DrawLine(cx + armGap, cy, cx + armGap + armLen, cy, paint);
-
-        paint.StrokeWidth = thick * 0.80f;
-        canvas.DrawLine(cx, cy, cx, cy + dotR * 2.2f, paint);
-
-        paint.Style = SKPaintStyle.Stroke;
-        paint.StrokeWidth = thick * 0.65f;
-        canvas.DrawCircle(cx, cy, ringR, paint);
-
-        paint.Style = SKPaintStyle.Fill;
-        canvas.DrawCircle(cx, cy, dotR, paint);
-    }
-
-    private static void DrawBezelEdge(SKCanvas canvas, float cx, float cy, float R, float br)
-    {
-        using var shadow = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 3f, Color = new SKColor(0, 0, 0, 210) };
-        canvas.DrawCircle(cx, cy, br, shadow);
-
-        using var accent = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, Color = new SKColor(0xFF, 0x95, 0x00, 38) };
-        canvas.DrawCircle(cx, cy, br - 2f, accent);
-
-        using var outer = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 1f, Color = new SKColor(0x18, 0x18, 0x22, 120) };
-        canvas.DrawCircle(cx, cy, R - 1f, outer);
     }
 }

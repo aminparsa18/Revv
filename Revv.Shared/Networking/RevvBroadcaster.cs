@@ -23,13 +23,16 @@ public class RevvBroadcaster : IAsyncDisposable
     private UdpClient? _echoListener;
     private UdpClient? _rumbleListener;
     private CancellationTokenSource? _cts;
-    private float _latestSteering = 0f;
-    private float _latestThrottle = 0f;
-    private float _latestBrake = 0f;
+    private float  _latestSteering = 0f;
+    private float  _latestThrottle = 0f;
+    private float  _latestBrake    = 0f;
+    private ushort _latestButtons  = 0;
     private readonly object _steeringLock = new();
     private float _smoothedLatencyMs = -1f;
     private long _lastLatencyFireMs = 0;
+    private long _lastEchoTimeMs = 0;
     private const float LatencyEmaAlpha = 0.2f;
+    private const int EchoTimeoutMs = 3000;
 
     public Task StartAsync()
     {
@@ -56,6 +59,17 @@ public class RevvBroadcaster : IAsyncDisposable
     {
         lock (_steeringLock)
             _latestBrake = Math.Clamp(value, 0f, 1f);
+    }
+
+    public void SetButton(RevvButtonMask button, bool pressed)
+    {
+        lock (_steeringLock)
+        {
+            if (pressed)
+                _latestButtons |= (ushort)button;
+            else
+                _latestButtons &= (ushort)~(int)button;
+        }
     }
 
     public async Task StopAsync()
@@ -123,10 +137,15 @@ public class RevvBroadcaster : IAsyncDisposable
     private async Task EnterStreamingAsync(string pcIp, CancellationToken ct)
     {
         State = BroadcasterState.Streaming;
+
+        // Clear any button bits that got stuck during discovery or a previous session.
+        lock (_steeringLock) _latestButtons = 0;
+
         Connected?.Invoke(this, pcIp);
 
         _streamer = new UdpClient();
         _smoothedLatencyMs = -1f;
+        _lastEchoTimeMs = 0;
 
         try
         {
@@ -145,40 +164,54 @@ public class RevvBroadcaster : IAsyncDisposable
         var pcEndpoint = new IPEndPoint(IPAddress.Parse(pcIp), RevvDiscovery.DataPort);
         var intervalMs = 1000 / SendRateHz;
 
+        bool lostConnection = false;
         try
         {
             while (!ct.IsCancellationRequested)
             {
                 float steering, throttle, brake;
+                ushort buttons;
                 lock (_steeringLock)
                 {
                     steering = _latestSteering;
                     throttle = _latestThrottle;
-                    brake = _latestBrake;
+                    brake    = _latestBrake;
+                    buttons  = _latestButtons;
                 }
 
                 var tick = (uint)(Environment.TickCount64 & 0xFFFFFFFFL);
-                var packet = new RevvPacket(steering, throttle, brake, tick).ToBytes();
+                var packet = new RevvPacket(steering, throttle, brake, tick, buttons).ToBytes();
                 await _streamer.SendAsync(packet, packet.Length, pcEndpoint);
                 await Task.Delay(intervalMs, ct);
+
+                // Watchdog: if the PC stopped echoing, treat it as a disconnect.
+                // Only active once the first echo has been received (_lastEchoTimeMs > 0),
+                // so we never false-positive before the PC has had a chance to respond.
+                if (_echoListener != null && _lastEchoTimeMs > 0 &&
+                    Environment.TickCount64 - _lastEchoTimeMs > EchoTimeoutMs)
+                {
+                    lostConnection = true;
+                    break;
+                }
             }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             ErrorOccurred?.Invoke(this, ex);
+            lostConnection = !ct.IsCancellationRequested;
+        }
 
-            if (!ct.IsCancellationRequested)
-            {
-                State = BroadcasterState.Idle;
-                Disconnected?.Invoke(this, EventArgs.Empty);
-                _streamer?.Close();
-                _echoListener?.Close();
-                _echoListener = null;
-                _rumbleListener?.Close();
-                _rumbleListener = null;
-                await EnterDiscoveryAsync(ct);
-            }
+        if (lostConnection)
+        {
+            State = BroadcasterState.Idle;
+            Disconnected?.Invoke(this, EventArgs.Empty);
+            _streamer?.Close();
+            _echoListener?.Close();
+            _echoListener = null;
+            _rumbleListener?.Close();
+            _rumbleListener = null;
+            await EnterDiscoveryAsync(ct);
         }
     }
 
@@ -211,6 +244,8 @@ public class RevvBroadcaster : IAsyncDisposable
                 var rawRtt = (int)(nowTick - sentTick);
 
                 if (rawRtt < 0 || rawRtt > 2000) continue;
+
+                _lastEchoTimeMs = Environment.TickCount64;
 
                 _smoothedLatencyMs = _smoothedLatencyMs < 0
                     ? rawRtt

@@ -2,6 +2,7 @@
 using Android.Content.PM;
 using Android.OS;
 using Android.Views;
+using AndroidX.Activity;
 using AndroidX.Core.View;
 
 namespace Revv;
@@ -14,9 +15,14 @@ public class MainActivity : MauiAppCompatActivity
     {
         base.OnCreate(savedInstanceState);
 
-        // Draw content behind the camera cutout in landscape
-        if (Build.VERSION.SdkInt >= BuildVersionCodes.P)
-            Window!.Attributes!.LayoutInDisplayCutoutMode = LayoutInDisplayCutoutMode.ShortEdges;
+        EdgeToEdge.Enable(this);
+        // Draw content behind the camera cutout in landscape.
+        // ShortEdges only covers top/bottom (portrait notch); in landscape the camera is
+        // on the long edge, so we need Always (API 30+) for full coverage.
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+            Window!.Attributes!.LayoutInDisplayCutoutMode = LayoutInDisplayCutoutMode.Never;
+        else if (OperatingSystem.IsAndroidVersionAtLeast(28))
+            Window!.Attributes!.LayoutInDisplayCutoutMode = LayoutInDisplayCutoutMode.Never;
 
         // Edge-to-edge: let content fill behind system bars
         WindowCompat.SetDecorFitsSystemWindows(Window!, false);
@@ -24,6 +30,7 @@ public class MainActivity : MauiAppCompatActivity
         // Hide status bar and nav bar (swipe-to-peek, not sticky)
         var controller = WindowCompat.GetInsetsController(Window!, Window!.DecorView);
         controller.Hide(WindowInsetsCompat.Type.StatusBars());
+        controller.Hide(WindowInsetsCompat.Type.DisplayCutout());
         controller.Hide(WindowInsetsCompat.Type.NavigationBars());
         controller.SystemBarsBehavior = WindowInsetsControllerCompat.BehaviorShowTransientBarsBySwipe;
     }
