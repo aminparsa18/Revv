@@ -59,11 +59,10 @@ Adjust these in the phone app's settings panel (tap the gear icon):
 
 | Setting | Default | What it does |
 |---|---|---|
-| Sensitivity | 1.4 | Output multiplier — higher means full lock with less rotation |
-| Range | 45° | Physical rotation angle that maps to full lock |
-| Expo | 1.2 | Center precision curve — higher gives more control near straight-ahead |
-| Center Assist | 0.02 | Strength of the self-centering spring |
-| Auto Calibrate | Off | Learns your actual rotation range during play and adjusts Range automatically |
+| Sensitivity | 1.4 | Output multiplier — higher means full lock with less physical rotation |
+| Range | 45° | Physical rotation arc that maps to full lock — narrow is twitchy, wide is relaxed |
+| Dead Zone | 0.5° | Ignores input smaller than this angle — reduces drift when holding still |
+| Auto-Center | 2% | Spring that pulls steering toward center when you stop turning — 0% is off |
 
 The PC side applies a spring-damper filter before input reaches the game, smoothing out any network jitter.
 
@@ -71,7 +70,7 @@ The PC side applies a spring-damper filter before input reaches the game, smooth
 
 ## Roadmap
 
-- [ ] Haptic feedback at full lock
+- [x] Haptic feedback (rumble from PC relayed to phone vibration)
 - [ ] Settings persistence between sessions
 - [ ] iOS support
 
