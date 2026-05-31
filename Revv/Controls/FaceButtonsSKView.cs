@@ -2,7 +2,7 @@ using SkiaSharp;
 using SkiaSharp.Views.Maui;
 using SkiaSharp.Views.Maui.Controls;
 
-namespace Revv;
+namespace Revv.Controls;
 
 public enum FaceButton { A, B, X, Y }
 
@@ -19,17 +19,17 @@ public sealed class FaceButtonsSKView : SKCanvasView
     // ── Button definitions ────────────────────────────────────────────────────
 
     private static readonly (FaceButton btn, string label, SKColor color, float nx, float ny)[] ButtonDefs =
-    {
+    [
         (FaceButton.Y, "Y", new SKColor(0xF0, 0xBB, 0x00),  0f, -1f),  // top    — gold
         (FaceButton.X, "X", new SKColor(0x18, 0x78, 0xE8), -1f,  0f),  // left   — blue
         (FaceButton.B, "B", new SKColor(0xE8, 0x00, 0x1D),  1f,  0f),  // right  — red
         (FaceButton.A, "A", new SKColor(0x00, 0xC0, 0x50),  0f,  1f),  // bottom — green
-    };
+    ];
 
     // ── Touch state ───────────────────────────────────────────────────────────
 
-    private readonly HashSet<FaceButton>          _held     = new();
-    private readonly Dictionary<long, FaceButton> _touchMap = new();
+    private readonly HashSet<FaceButton>          _held     = [];
+    private readonly Dictionary<long, FaceButton> _touchMap = [];
 
     // ── Constructor ───────────────────────────────────────────────────────────
 
@@ -50,19 +50,22 @@ public sealed class FaceButtonsSKView : SKCanvasView
     }
 
     private static SKPoint BtnCenter(float nx, float ny, float spacing, float cx, float cy)
-        => new(cx + nx * spacing, cy + ny * spacing);
+        => new(cx + (nx * spacing), cy + (ny * spacing));
 
     // ── Hit test ──────────────────────────────────────────────────────────────
 
     private FaceButton? HitTest(float x, float y, SKImageInfo info)
     {
-        var (btnR, spacing, cx, cy) = Layout(info);
+        (float btnR, float spacing, float cx, float cy) = Layout(info);
         float hitR = btnR * 1.25f;
-        foreach (var (btn, _, _, nx, ny) in ButtonDefs)
+        foreach ((FaceButton btn, string _, SKColor _, float nx, float ny) in ButtonDefs)
         {
-            var c = BtnCenter(nx, ny, spacing, cx, cy);
+            SKPoint c = BtnCenter(nx, ny, spacing, cx, cy);
             float dx = x - c.X, dy = y - c.Y;
-            if (dx * dx + dy * dy <= hitR * hitR) return btn;
+            if ((dx * dx) + (dy * dy) <= hitR * hitR)
+            {
+                return btn;
+            }
         }
         return null;
     }
@@ -72,13 +75,13 @@ public sealed class FaceButtonsSKView : SKCanvasView
     protected override void OnTouch(SKTouchEventArgs e)
     {
         e.Handled = true;
-        var info  = new SKImageInfo((int)CanvasSize.Width, (int)CanvasSize.Height);
+        SKImageInfo info  = new((int)CanvasSize.Width, (int)CanvasSize.Height);
 
         switch (e.ActionType)
         {
             case SKTouchAction.Pressed:
             {
-                var hit = HitTest(e.Location.X, e.Location.Y, info);
+                    FaceButton? hit = HitTest(e.Location.X, e.Location.Y, info);
                 if (hit is FaceButton btn)
                 {
                     _touchMap[e.Id] = btn;
@@ -93,7 +96,7 @@ public sealed class FaceButtonsSKView : SKCanvasView
             case SKTouchAction.Released:
             case SKTouchAction.Cancelled:
             {
-                if (_touchMap.Remove(e.Id, out var btn))
+                if (_touchMap.Remove(e.Id, out FaceButton btn))
                 {
                     bool stillHeld = _touchMap.Values.Any(b => b == btn);
                     if (!stillHeld && _held.Remove(btn))
@@ -112,13 +115,15 @@ public sealed class FaceButtonsSKView : SKCanvasView
     protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
     {
         base.OnPaintSurface(e);
-        var canvas = e.Surface.Canvas;
+        SKCanvas canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
-        var (btnR, spacing, cx, cy) = Layout(e.Info);
+        (float btnR, float spacing, float cx, float cy) = Layout(e.Info);
 
-        foreach (var (btn, label, color, nx, ny) in ButtonDefs)
+        foreach ((FaceButton btn, string? label, SKColor color, float nx, float ny) in ButtonDefs)
+        {
             DrawButton(canvas, BtnCenter(nx, ny, spacing, cx, cy), btnR, label, color, _held.Contains(btn));
+        }
     }
 
     // ── 3-D button renderer ───────────────────────────────────────────────────
@@ -129,7 +134,7 @@ public sealed class FaceButtonsSKView : SKCanvasView
         float faceR   = r * 0.76f;
         float pressedSinkX = r * 0.02f;
         float pressedSinkY = r * 0.04f;
-        var   faceCenter   = pressed
+        SKPoint faceCenter   = pressed
             ? new SKPoint(center.X + pressedSinkX, center.Y + pressedSinkY)
             : center;
 
@@ -138,7 +143,7 @@ public sealed class FaceButtonsSKView : SKCanvasView
             float blur   = pressed ? r * 0.08f  : r * 0.20f;
             float offset = pressed ? r * 0.03f  : r * 0.16f;
             byte  alpha  = pressed ? (byte)50   : (byte)170;
-            using var p = new SKPaint
+            using SKPaint p = new()
             {
                 IsAntialias = true,
                 MaskFilter  = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, blur),
@@ -149,11 +154,11 @@ public sealed class FaceButtonsSKView : SKCanvasView
 
         // ── Bezel (dark mount ring) ───────────────────────────────────────────
         {
-            using var p = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
-            using var sh = SKShader.CreateLinearGradient(
+            using SKPaint p = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+            using SKShader sh = SKShader.CreateLinearGradient(
                 new SKPoint(center.X, center.Y - r),
                 new SKPoint(center.X, center.Y + r),
-                new SKColor[] { new(0x40, 0x40, 0x40), new(0x0A, 0x0A, 0x0A) },
+                [new(0x40, 0x40, 0x40), new(0x0A, 0x0A, 0x0A)],
                 null, SKShaderTileMode.Clamp);
             p.Shader = sh;
             canvas.DrawCircle(center, r, p);
@@ -162,9 +167,9 @@ public sealed class FaceButtonsSKView : SKCanvasView
         // Thin highlight arc on top of bezel (light grazes the rim edge)
         {
             float inset = r * 0.08f;
-            var   rect  = new SKRect(center.X - r + inset, center.Y - r + inset,
+            SKRect rect  = new(center.X - r + inset, center.Y - r + inset,
                                      center.X + r - inset, center.Y + r - inset);
-            using var p = new SKPaint
+            using SKPaint p = new()
             {
                 IsAntialias = true,
                 Style       = SKPaintStyle.Stroke,
@@ -180,12 +185,12 @@ public sealed class FaceButtonsSKView : SKCanvasView
             SKColor mid = pressed ? Darken(color, 0.10f) : color;
             SKColor lo  = Darken(color, pressed ? 0.30f : 0.50f);
 
-            using var p = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
-            using var sh = SKShader.CreateLinearGradient(
+            using SKPaint p = new() { IsAntialias = true, Style = SKPaintStyle.Fill };
+            using SKShader sh = SKShader.CreateLinearGradient(
                 new SKPoint(faceCenter.X, faceCenter.Y - faceR),
                 new SKPoint(faceCenter.X, faceCenter.Y + faceR),
-                new[] { hi, mid, lo },
-                new[] { 0f, 0.4f, 1f },
+                [hi, mid, lo],
+                [0f, 0.4f, 1f],
                 SKShaderTileMode.Clamp);
             p.Shader = sh;
             canvas.DrawCircle(faceCenter, faceR, p);
@@ -194,12 +199,12 @@ public sealed class FaceButtonsSKView : SKCanvasView
         // ── Specular highlight (convex dome reflection, top-left) ─────────────
         if (!pressed)
         {
-            var   hlC = new SKPoint(faceCenter.X - faceR * 0.13f, faceCenter.Y - faceR * 0.30f);
+            SKPoint hlC = new(faceCenter.X - (faceR * 0.13f), faceCenter.Y - (faceR * 0.30f));
             float hlR = faceR * 0.50f;
-            using var p = new SKPaint { IsAntialias = true };
-            using var sh = SKShader.CreateRadialGradient(
+            using SKPaint p = new() { IsAntialias = true };
+            using SKShader sh = SKShader.CreateRadialGradient(
                 hlC, hlR,
-                new SKColor[] { new(0xFF, 0xFF, 0xFF, 105), new(0xFF, 0xFF, 0xFF, 0) },
+                [new(0xFF, 0xFF, 0xFF, 105), new(0xFF, 0xFF, 0xFF, 0)],
                 null, SKShaderTileMode.Clamp);
             p.Shader = sh;
             canvas.DrawCircle(hlC, hlR, p);
@@ -207,64 +212,54 @@ public sealed class FaceButtonsSKView : SKCanvasView
         else
         {
             // Pressed: colored rim glow inside the bezel well
-            using var p = new SKPaint { IsAntialias = true };
-            using var sh = SKShader.CreateRadialGradient(
+            using SKPaint p = new() { IsAntialias = true };
+            using SKShader sh = SKShader.CreateRadialGradient(
                 faceCenter, r,
-                new SKColor[]
-                {
+                [
                     new(0, 0, 0, 0),
                     new(color.Red, color.Green, color.Blue, 70),
-                },
-                new[] { 0.65f, 1f },
+                ],
+                [0.65f, 1f],
                 SKShaderTileMode.Clamp);
             p.Shader = sh;
             canvas.DrawCircle(center, r, p);
         }
 
         // ── Label ─────────────────────────────────────────────────────────────
-        float fontSize   = faceR * 0.90f;
         float labelShift = pressed ? r * 0.04f : 0f;
-        var   typeface   = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold);
+        using SKTypeface typeface = SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold);
+        using SKFont font = new(typeface, faceR * 0.90f);
+
+        float advance = font.MeasureText(label, out SKRect b);
+        float halfW   = advance / 2f;
 
         // Text drop shadow (unpressed only — depth illusion)
         if (!pressed)
         {
-            using var shadow = new SKPaint
+            using SKPaint shadow = new()
             {
                 IsAntialias = true,
                 Color       = new SKColor(0, 0, 0, 90),
-                TextSize    = fontSize,
-                Typeface    = typeface,
-                TextAlign   = SKTextAlign.Center,
                 MaskFilter  = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, 1.8f),
             };
-            var b = new SKRect();
-            shadow.MeasureText(label, ref b);
-            canvas.DrawText(label, faceCenter.X + 1.2f, faceCenter.Y - b.MidY + 1.8f, shadow);
+            canvas.DrawText(label, faceCenter.X + 1.2f - halfW, faceCenter.Y - b.MidY + 1.8f, font, shadow);
         }
 
         // Main label
-        using var text = new SKPaint
+        using SKPaint text = new()
         {
             IsAntialias = true,
             Color       = pressed ? new SKColor(0xFF, 0xFF, 0xFF, 210) : SKColors.White,
-            TextSize    = fontSize,
-            Typeface    = typeface,
-            TextAlign   = SKTextAlign.Center,
         };
-        {
-            var b = new SKRect();
-            text.MeasureText(label, ref b);
-            canvas.DrawText(label, faceCenter.X, faceCenter.Y - b.MidY + labelShift, text);
-        }
+        canvas.DrawText(label, faceCenter.X - halfW, faceCenter.Y - b.MidY + labelShift, font, text);
     }
 
     // ── Color helpers ─────────────────────────────────────────────────────────
 
     private static SKColor Lighten(SKColor c, float t) => new(
-        (byte)(c.Red   + (255 - c.Red)   * t),
-        (byte)(c.Green + (255 - c.Green) * t),
-        (byte)(c.Blue  + (255 - c.Blue)  * t));
+        (byte)(c.Red   + ((255 - c.Red)   * t)),
+        (byte)(c.Green + ((255 - c.Green) * t)),
+        (byte)(c.Blue  + ((255 - c.Blue)  * t)));
 
     private static SKColor Darken(SKColor c, float t) => new(
         (byte)(c.Red   * (1f - t)),

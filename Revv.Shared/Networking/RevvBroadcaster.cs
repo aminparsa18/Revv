@@ -88,7 +88,7 @@ public class RevvBroadcaster : IAsyncDisposable
         try
         {
             _broadcaster = new UdpClient { EnableBroadcast = true };
-            _ackListener = new UdpClient(RevvDiscovery.PhoneListenPort);
+            _ackListener = BindWithReuseAddr(RevvDiscovery.PhoneListenPort);
         }
         catch (Exception ex)
         {
@@ -149,14 +149,14 @@ public class RevvBroadcaster : IAsyncDisposable
 
         try
         {
-            _echoListener = new UdpClient(RevvDiscovery.EchoPort);
+            _echoListener = BindWithReuseAddr(RevvDiscovery.EchoPort);
             _ = ReceiveEchoesAsync(_echoListener, ct);
         }
         catch { /* echo unavailable — latency display stays at "—" */ }
 
         try
         {
-            _rumbleListener = new UdpClient(RevvDiscovery.RumblePort);
+            _rumbleListener = BindWithReuseAddr(RevvDiscovery.RumblePort);
             _ = ReceiveRumbleAsync(_rumbleListener, ct);
         }
         catch { /* rumble unavailable */ }
@@ -274,6 +274,15 @@ public class RevvBroadcaster : IAsyncDisposable
         _ackListener = null;
         _streamer = null;
         _echoListener = null;
+        _rumbleListener = null;
+    }
+
+    private static UdpClient BindWithReuseAddr(int port)
+    {
+        var client = new UdpClient();
+        client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        client.Client.Bind(new System.Net.IPEndPoint(System.Net.IPAddress.Any, port));
+        return client;
     }
 
     public async ValueTask DisposeAsync()

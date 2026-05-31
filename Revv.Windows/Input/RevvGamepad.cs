@@ -155,7 +155,11 @@ public class RevvGamepad : IDisposable
 
     public void SetButtons(ushort buttons)
     {
-        if (!IsConnected) return;
+        if (!IsConnected)
+        {
+            return;
+        }
+
         _targetButtons = buttons;
     }
 
@@ -170,7 +174,11 @@ public class RevvGamepad : IDisposable
         CurrentBrake    = 0f;
         _steeringVelocity = 0f;
 
-        if (!IsConnected || _controller is null) return;
+        if (!IsConnected || _controller is null)
+        {
+            return;
+        }
+
         _controller.SetAxisValue(Xbox360Axis.LeftThumbX, 0);
         _controller.SetSliderValue(Xbox360Slider.RightTrigger, 0);
         _controller.SetSliderValue(Xbox360Slider.LeftTrigger, 0);
@@ -209,7 +217,7 @@ public class RevvGamepad : IDisposable
             long remaining = nextTick - sw.ElapsedTicks;
             if (remaining > 0)
             {
-                long sleepMs = remaining * 1000 / Stopwatch.Frequency - 1;
+                long sleepMs = (remaining * 1000 / Stopwatch.Frequency) - 1;
                 if (sleepMs > 0)
                 {
                     Thread.Sleep((int)sleepMs);
@@ -235,19 +243,19 @@ public class RevvGamepad : IDisposable
         _prevTickTimestamp = now;
 
         // Critically damped spring: quick response, no oscillation, weighted feel
-        float accel = (_targetSteering - CurrentSteering) * SteerStiffness
-                      - _steeringVelocity * SteerDamping;
+        float accel = ((_targetSteering - CurrentSteering) * SteerStiffness)
+                      - (_steeringVelocity * SteerDamping);
         _steeringVelocity += accel * dt;
-        CurrentSteering = Math.Clamp(CurrentSteering + _steeringVelocity * dt, -1f, 1f);
+        CurrentSteering = Math.Clamp(CurrentSteering + (_steeringVelocity * dt), -1f, 1f);
 
         CurrentThrottle = _targetThrottle;
         CurrentBrake = _targetBrake;
 
-        float dynamicDeadband = Deadband / (1f + MathF.Abs(_steeringVelocity) * 8f);
+        float dynamicDeadband = Deadband / (1f + (MathF.Abs(_steeringVelocity) * 8f));
         float steerOut = MathF.Abs(CurrentSteering) < dynamicDeadband ? 0f : CurrentSteering;
 
         // Speed-sensitive scaling — 1.0 at rest, reduces as speed increases
-        float speedScale = 1f / (1f + _speedMs * SpeedSensitivity);
+        float speedScale = 1f / (1f + (_speedMs * SpeedSensitivity));
         steerOut *= speedScale;
 
         short  steerShort    = (short)(-Math.Clamp(steerOut, -1f, 1f) * short.MaxValue);
@@ -257,7 +265,9 @@ public class RevvGamepad : IDisposable
 
         if (steerShort == _lastSteerShort && throttleByte == _lastThrottleByte
             && brakeByte == _lastBrakeByte && buttons == _lastButtons)
+        {
             return;
+        }
 
         _lastSteerShort   = steerShort;
         _lastThrottleByte = throttleByte;

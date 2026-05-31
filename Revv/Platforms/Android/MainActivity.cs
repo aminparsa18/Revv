@@ -20,15 +20,19 @@ public class MainActivity : MauiAppCompatActivity
         // ShortEdges only covers top/bottom (portrait notch); in landscape the camera is
         // on the long edge, so we need Always (API 30+) for full coverage.
         if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
             Window!.Attributes!.LayoutInDisplayCutoutMode = LayoutInDisplayCutoutMode.Never;
+        }
         else if (OperatingSystem.IsAndroidVersionAtLeast(28))
+        {
             Window!.Attributes!.LayoutInDisplayCutoutMode = LayoutInDisplayCutoutMode.Never;
+        }
 
         // Edge-to-edge: let content fill behind system bars
         WindowCompat.SetDecorFitsSystemWindows(Window!, false);
 
         // Hide status bar and nav bar (swipe-to-peek, not sticky)
-        var controller = WindowCompat.GetInsetsController(Window!, Window!.DecorView);
+        WindowInsetsControllerCompat? controller = WindowCompat.GetInsetsController(Window!, Window!.DecorView);
         controller.Hide(WindowInsetsCompat.Type.StatusBars());
         controller.Hide(WindowInsetsCompat.Type.DisplayCutout());
         controller.Hide(WindowInsetsCompat.Type.NavigationBars());

@@ -1,6 +1,9 @@
 #if ANDROID
 using Android.OS;
+using Revv.Controls;
+
 #endif
+using Revv.Controls;
 using Revv.Shared;
 using Revv.Shared.Networking;
 using RevvBtn = Revv.Shared.Networking.RevvButtonMask;
@@ -13,7 +16,6 @@ public partial class MainPage : ContentPage
     private readonly RevvBroadcaster _broadcaster;
 
     private bool _settingsOpen = false;
-    private bool _isConnected = false;
     private bool _pedalsEnabled = false;
     private bool _isPaused = false;
     private CancellationTokenSource? _pulseCts;
@@ -83,8 +85,8 @@ public partial class MainPage : ContentPage
         {
             _broadcaster.SetSteering(value);
 
-            // Throttle UI repaints to ~60 fps. Broadcaster always gets data at full gyro rate.
-            var now = System.Environment.TickCount64;
+            // Throttle UI repaints to ~60 fps. Broadcaster always gets data at full sensor rate.
+            long now = System.Environment.TickCount64;
             if (now - Interlocked.Read(ref _lastUiUpdateMs) >= 16)
             {
                 Interlocked.Exchange(ref _lastUiUpdateMs, now);
@@ -137,7 +139,7 @@ public partial class MainPage : ContentPage
 
             if (Build.VERSION.SdkInt >= BuildVersionCodes.O)
             {
-                var effect = VibrationEffect.CreateOneShot(80, amplitude);
+                VibrationEffect? effect = VibrationEffect.CreateOneShot(80, amplitude);
                 vibrator.Vibrate(effect);
             }
             else
@@ -178,8 +180,6 @@ public partial class MainPage : ContentPage
 
     private void SetConnectedState(bool connected, string? ip = null)
     {
-        _isConnected = connected;
-
         if (connected)
         {
             StopStatusPulse();
@@ -254,16 +254,20 @@ public partial class MainPage : ContentPage
     {
         _pulseCts?.Cancel();
         _pulseCts = null;
-        _ = StatusDot.FadeTo(1.0, 0); // snap to opaque, cancels any in-flight fade
+        _ = StatusDot.FadeToAsync(1.0, 0); // snap to opaque, cancels any in-flight fade
     }
 
     private async Task PulseLoop(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
-            await StatusDot.FadeTo(0.2, 600);
-            if (token.IsCancellationRequested) break;
-            await StatusDot.FadeTo(1.0, 600);
+            await StatusDot.FadeToAsync(0.2, 600);
+            if (token.IsCancellationRequested)
+            {
+                break;
+            }
+
+            await StatusDot.FadeToAsync(1.0, 600);
         }
     }
 
@@ -342,9 +346,16 @@ public partial class MainPage : ContentPage
 
     private async void OnSettingsToggled(object? sender, EventArgs e)
     {
-        if (_panelAnimating) return;
+        if (_panelAnimating)
+        {
+            return;
+        }
+
         _panelAnimating = true;
         _settingsOpen = !_settingsOpen;
+
+        if (!_settingsOpen)
+            TooltipBorder.IsVisible = false;
 
         View incoming = _settingsOpen ? SettingsPanel : AttitudePanel;
         View outgoing = _settingsOpen ? AttitudePanel : SettingsPanel;
@@ -368,6 +379,44 @@ public partial class MainPage : ContentPage
     {
         _steering.RangeDegrees = (float)e.NewValue;
         RangeValueLabel.Text = $"{(int)e.NewValue}°";
+    }
+
+    private void OnDeadZoneChanged(object? sender, ValueChangedEventArgs e)
+    {
+        _steering.DeadZone = (float)e.NewValue;
+        DeadZoneValueLabel.Text = $"{e.NewValue:F1}°";
+    }
+
+    private void OnCenterAssistChanged(object? sender, ValueChangedEventArgs e)
+    {
+        _steering.CenterAssist = (float)e.NewValue / 100f;
+        CenterAssistValueLabel.Text = e.NewValue == 0 ? "OFF" : $"{e.NewValue:F0}%";
+    }
+
+    private void OnSensitivityHelp(object? sender, EventArgs e)
+        => ShowTooltip("Amplifies gyro input. Higher = full lock with less physical rotation.");
+
+    private void OnRangeHelp(object? sender, EventArgs e)
+        => ShowTooltip("Physical steering arc that maps to full lock. Narrow = twitchy, wide = relaxed.");
+
+    private void OnDeadZoneHelp(object? sender, EventArgs e)
+        => ShowTooltip("Ignores input smaller than this angle. Reduces drift when holding still.");
+
+    private void OnCenterAssistHelp(object? sender, EventArgs e)
+        => ShowTooltip("Spring that pulls steering toward center when you stop turning. Higher = stronger. 0% = off.");
+
+    private async void ShowTooltip(string text)
+    {
+        TooltipLabel.Text = text;
+        TooltipBorder.Opacity = 0;
+        TooltipBorder.IsVisible = true;
+        await TooltipBorder.FadeToAsync(1, 180);
+    }
+
+    private async void OnTooltipDismissed(object? sender, TappedEventArgs e)
+    {
+        await TooltipBorder.FadeToAsync(0, 150);
+        TooltipBorder.IsVisible = false;
     }
 
     private void OnRecenterClicked(object? sender, EventArgs e)
@@ -418,13 +467,13 @@ public partial class MainPage : ContentPage
             FaceButtons.IsVisible      = true;
 
             await Task.WhenAll(
-                PedalsThumb.TranslateTo(28, 0, 500, Easing.SpringOut),
-                BrakePanel.TranslateTo(0, 0, 380, Easing.SpringOut),
-                ThrottlePanel.TranslateTo(0, 0, 380, Easing.SpringOut),
-                BrakePanel.FadeTo(1, 250),
-                ThrottlePanel.FadeTo(1, 250),
-                FaceButtons.TranslateTo(0, 0, 380, Easing.SpringOut),
-                FaceButtons.FadeTo(1, 250)
+                PedalsThumb.TranslateToAsync(28, 0, 500, Easing.SpringOut),
+                BrakePanel.TranslateToAsync(0, 0, 380, Easing.SpringOut),
+                ThrottlePanel.TranslateToAsync(0, 0, 380, Easing.SpringOut),
+                BrakePanel.FadeToAsync(1, 250),
+                ThrottlePanel.FadeToAsync(1, 250),
+                FaceButtons.TranslateToAsync(0, 0, 380, Easing.SpringOut),
+                FaceButtons.FadeToAsync(1, 250)
             );
         }
         else
@@ -436,13 +485,13 @@ public partial class MainPage : ContentPage
             PedalsThumb.BackgroundColor = Color.FromArgb("#555555");
 
             await Task.WhenAll(
-                PedalsThumb.TranslateTo(0, 0, 500, Easing.SpringOut),
-                BrakePanel.TranslateTo(-80, 0, 220, Easing.CubicIn),
-                ThrottlePanel.TranslateTo(80, 0, 220, Easing.CubicIn),
-                BrakePanel.FadeTo(0, 180),
-                ThrottlePanel.FadeTo(0, 180),
-                FaceButtons.TranslateTo(0, -80, 220, Easing.CubicIn),
-                FaceButtons.FadeTo(0, 180)
+                PedalsThumb.TranslateToAsync(0, 0, 500, Easing.SpringOut),
+                BrakePanel.TranslateToAsync(-80, 0, 220, Easing.CubicIn),
+                ThrottlePanel.TranslateToAsync(80, 0, 220, Easing.CubicIn),
+                BrakePanel.FadeToAsync(0, 180),
+                ThrottlePanel.FadeToAsync(0, 180),
+                FaceButtons.TranslateToAsync(0, -80, 220, Easing.CubicIn),
+                FaceButtons.FadeToAsync(0, 180)
             );
 
             BrakePanel.IsVisible       = false;

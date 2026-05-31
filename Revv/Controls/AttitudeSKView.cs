@@ -3,7 +3,7 @@ using SkiaSharp;
 using SkiaSharp.Views.Maui;
 using SkiaSharp.Views.Maui.Controls;
 
-namespace Revv;
+namespace Revv.Controls;
 
 // Caches the static layers of the attitude indicator so each frame only does
 // cheap image blits + one small dynamic path draw. This avoids allocating
@@ -38,14 +38,17 @@ public sealed class AttitudeSKView : SKCanvasView
         base.OnPaintSurface(e);
 
         int w = e.Info.Width, h = e.Info.Height;
-        if (w < 1 || h < 1) return;
+        if (w < 1 || h < 1)
+        {
+            return;
+        }
 
         EnsureCaches(w, h);
 
         float cx = w / 2f, cy = h / 2f, S = MathF.Min(w, h);
         float R = S / 2f * 0.96f, bz = R * 0.145f, br = R - bz;
 
-        var canvas = e.Surface.Canvas;
+        SKCanvas canvas = e.Surface.Canvas;
         canvas.Clear(new SKColor(0x0A, 0x0A, 0x0A));
 
         // Static background
@@ -53,7 +56,7 @@ public sealed class AttitudeSKView : SKCanvasView
 
         // Dynamic: horizon ball — pre-rendered content rotated into place
         canvas.Save();
-        using (var clip = new SKPath())
+        using (SKPath clip = new())
         {
             clip.AddCircle(cx, cy, br - 1.5f);
             canvas.ClipPath(clip);
@@ -74,7 +77,10 @@ public sealed class AttitudeSKView : SKCanvasView
 
     private void EnsureCaches(int w, int h)
     {
-        if (w == _cacheW && h == _cacheH && _bgImage != null) return;
+        if (w == _cacheW && h == _cacheH && _bgImage != null)
+        {
+            return;
+        }
 
         _bgImage?.Dispose();
         _horizonImage?.Dispose();
@@ -86,7 +92,7 @@ public sealed class AttitudeSKView : SKCanvasView
 
         float cx = w / 2f, cy = h / 2f, S = MathF.Min(w, h);
         float R = S / 2f * 0.96f, bz = R * 0.145f, br = R - bz;
-        var info = new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
+        SKImageInfo info = new(w, h, SKColorType.Rgba8888, SKAlphaType.Premul);
 
         _bgImage = Render(info, c =>
         {
@@ -113,7 +119,7 @@ public sealed class AttitudeSKView : SKCanvasView
 
     private static SKImage Render(SKImageInfo info, Action<SKCanvas> draw)
     {
-        using var surface = SKSurface.Create(info);
+        using SKSurface surface = SKSurface.Create(info);
         surface.Canvas.Clear(SKColors.Transparent);
         draw(surface.Canvas);
         return surface.Snapshot();

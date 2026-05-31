@@ -68,10 +68,15 @@ public class SteeringController
 
     public void Start(SensorSpeed sensorSpeed = SensorSpeed.Fastest)
     {
-        if (IsRunning) return;
+        if (IsRunning)
+        {
+            return;
+        }
 
         if (!OrientationSensor.Default.IsSupported)
+        {
             throw new NotSupportedException("This device does not support the orientation sensor.");
+        }
 
         _calibrated = false;
         _degrees = 0f;
@@ -88,7 +93,10 @@ public class SteeringController
 
     public void Stop()
     {
-        if (!IsRunning) return;
+        if (!IsRunning)
+        {
+            return;
+        }
 
         OrientationSensor.Default.ReadingChanged -= OnOrientationChanged;
         OrientationSensor.Default.Stop();
@@ -102,7 +110,7 @@ public class SteeringController
 
     private void OnOrientationChanged(object? sender, OrientationSensorChangedEventArgs e)
     {
-        var q = e.Reading.Orientation;
+        Quaternion q = e.Reading.Orientation;
         _lastOrientation = q;
 
         // First reading: snapshot as the neutral reference, then wait for next tick
@@ -115,7 +123,7 @@ public class SteeringController
 
         // Relative rotation from reference to current, expressed in the reference device frame.
         // q_rel = q_ref⁻¹ * q_curr  →  rotation around device Z = steering wheel rotation.
-        var delta = Quaternion.Inverse(_referenceOrientation) * q;
+        Quaternion delta = Quaternion.Inverse(_referenceOrientation) * q;
 
         // Extract Z-axis twist. CW rotation (steer right) is negative Z by right-hand rule, so negate.
         _degrees = ZTwistDegrees(delta);
@@ -141,11 +149,17 @@ public class SteeringController
         float absDegrees = MathF.Abs(_degrees);
         if (_isCentered)
         {
-            if (absDegrees > DeadZone * 1.5f) _isCentered = false;
+            if (absDegrees > DeadZone * 1.5f)
+            {
+                _isCentered = false;
+            }
         }
         else
         {
-            if (absDegrees < DeadZone) _isCentered = true;
+            if (absDegrees < DeadZone)
+            {
+                _isCentered = true;
+            }
         }
         float outputDegrees = _isCentered ? 0f : _degrees;
 
@@ -163,7 +177,11 @@ public class SteeringController
     {
         // Project vector part onto Z axis to isolate the twist component.
         // Guard: if both Z and W are zero the quaternion is degenerate (shouldn't happen in practice).
-        if (q.Z * q.Z + q.W * q.W < 1e-12f) return 0f;
+        if ((q.Z * q.Z) + (q.W * q.W) < 1e-12f)
+        {
+            return 0f;
+        }
+
         return 2f * MathF.Atan2(q.Z, q.W) * RadToDeg;
     }
 
@@ -179,7 +197,9 @@ public class SteeringController
     public void Recenter()
     {
         if (_calibrated)
+        {
             _referenceOrientation = _lastOrientation;
+        }
 
         _degrees = 0f;
         _isCentered = true;

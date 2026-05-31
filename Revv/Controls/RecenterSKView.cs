@@ -2,7 +2,7 @@ using SkiaSharp;
 using SkiaSharp.Views.Maui;
 using SkiaSharp.Views.Maui.Controls;
 
-namespace Revv;
+namespace Revv.Controls;
 
 public sealed class RecenterSKView : SKCanvasView
 {
@@ -46,7 +46,7 @@ public sealed class RecenterSKView : SKCanvasView
 
     protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
     {
-        var canvas = e.Surface.Canvas;
+        SKCanvas canvas = e.Surface.Canvas;
         canvas.Clear(SKColors.Transparent);
 
         float w   = e.Info.Width;
@@ -57,7 +57,7 @@ public sealed class RecenterSKView : SKCanvasView
         float outerR = MathF.Min(cx, cy) - pad;
 
         // ── Drop shadow ────────────────────────────────────────────────────────
-        using (var shadowPaint = new SKPaint
+        using (SKPaint shadowPaint = new()
         {
             IsAntialias = true,
             MaskFilter  = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, _pressed ? 4f : 10f),
@@ -71,23 +71,28 @@ public sealed class RecenterSKView : SKCanvasView
         }
 
         // ── Bezel shell ────────────────────────────────────────────────────────
-        using (var bezelShader = SKShader.CreateLinearGradient(
+        using (SKShader bezelShader = SKShader.CreateLinearGradient(
             new SKPoint(cx, cy - outerR),
             new SKPoint(cx, cy + outerR),
-            new[] { new SKColor(55, 0, 8), new SKColor(12, 0, 3) },
+            [new SKColor(55, 0, 8), new SKColor(12, 0, 3)],
             SKShaderTileMode.Clamp))
-        using (var bezelPaint = new SKPaint { IsAntialias = true, Shader = bezelShader })
+        using (SKPaint bezelPaint = new()
+        { IsAntialias = true, Shader = bezelShader })
+        {
             canvas.DrawCircle(cx, cy, outerR, bezelPaint);
+        }
 
         // Bezel rim highlight
-        using (var rimPaint = new SKPaint
+        using (SKPaint rimPaint = new()
         {
             IsAntialias = true,
             Style       = SKPaintStyle.Stroke,
             StrokeWidth = 1.4f,
             Color       = new SKColor(255, 100, 100, _pressed ? (byte)35 : (byte)90),
         })
+        {
             canvas.DrawCircle(cx, cy, outerR - 0.7f, rimPaint);
+        }
 
         // ── Face ───────────────────────────────────────────────────────────────
         float faceInset = _pressed ? 4f : 3f;
@@ -107,24 +112,27 @@ public sealed class RecenterSKView : SKCanvasView
             lo  = new SKColor(130, 0,  18);
         }
 
-        using (var faceShader = SKShader.CreateLinearGradient(
+        using (SKShader faceShader = SKShader.CreateLinearGradient(
             new SKPoint(cx * 0.35f, cy - faceR),
             new SKPoint(cx * 1.65f, cy + faceR),
-            new[] { hi, mid, lo },
-            new[] { 0f, 0.42f, 1f },
+            [hi, mid, lo],
+            [0f, 0.42f, 1f],
             SKShaderTileMode.Clamp))
-        using (var facePaint = new SKPaint { IsAntialias = true, Shader = faceShader })
+        using (SKPaint facePaint = new()
+        { IsAntialias = true, Shader = faceShader })
+        {
             canvas.DrawCircle(cx, cy, faceR, facePaint);
+        }
 
         // ── Specular gloss ─────────────────────────────────────────────────────
         if (!_pressed)
         {
-            using var specShader = SKShader.CreateRadialGradient(
+            using SKShader specShader = SKShader.CreateRadialGradient(
                 new SKPoint(cx * 0.55f, cy * 0.45f),
                 faceR * 0.75f,
-                new[] { new SKColor(255, 255, 255, (byte)60), new SKColor(255, 255, 255, 0) },
+                [new SKColor(255, 255, 255, 60), new SKColor(255, 255, 255, 0)],
                 SKShaderTileMode.Clamp);
-            using var specPaint = new SKPaint { IsAntialias = true, Shader = specShader };
+            using SKPaint specPaint = new() { IsAntialias = true, Shader = specShader };
             canvas.DrawCircle(cx, cy, faceR, specPaint);
         }
 
@@ -139,7 +147,7 @@ public sealed class RecenterSKView : SKCanvasView
         float tickLen = side * 0.10f;
         float sw      = _pressed ? side * 0.038f : side * 0.048f;
 
-        using var iconPaint = new SKPaint
+        using SKPaint iconPaint = new()
         {
             IsAntialias = true,
             Style       = SKPaintStyle.Stroke,
@@ -154,7 +162,7 @@ public sealed class RecenterSKView : SKCanvasView
         canvas.DrawLine(icx - ringR - tickGap, icy, icx - ringR - tickGap - tickLen, icy, iconPaint);
         canvas.DrawLine(icx + ringR + tickGap, icy, icx + ringR + tickGap + tickLen, icy, iconPaint);
 
-        using var dotPaint = new SKPaint
+        using SKPaint dotPaint = new()
         {
             IsAntialias = true,
             Color       = new SKColor(255, 255, 255, _pressed ? (byte)200 : (byte)255),

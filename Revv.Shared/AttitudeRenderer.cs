@@ -35,7 +35,7 @@ public static class AttitudeRenderer
             {
                 SKColors.Transparent,
                 SKColors.Transparent,
-                new SKColor(0xFF, 0x95, 0x00, 18),
+                new SKColor(0xE8, 0x00, 0x1D, 18),
                 SKColors.Transparent,
             },
             new[] { 0f, 0.80f, 0.93f, 1.0f },
@@ -128,27 +128,132 @@ public static class AttitudeRenderer
             canvas.DrawLine(cx - br, cy, cx + br, cy, paint);
     }
 
-    public static void DrawSphereOverlay(SKCanvas canvas, float cx, float cy, float br)
+    public static void DrawSphereOverlay(SKCanvas canvas, float cx, float cy, float radius)
     {
-        using var vigShader = SKShader.CreateRadialGradient(
-            new SKPoint(cx, cy), br,
+        // =========================================================
+        // EDGE VIGNETTE
+        // Simulates curvature shadowing toward sphere boundaries.
+        // Avoid harsh rings — transitions must stay very soft.
+        // =========================================================
+
+        using var edgeShader = SKShader.CreateRadialGradient(
+            center: new SKPoint(cx, cy),
+            radius: radius,
+            colors: new[]
+            {
+            SKColors.Transparent,
+            SKColors.Transparent,
+            new SKColor(0, 0, 0, 40),
+            new SKColor(0, 0, 0, 110),
+            },
+            colorPos: new[]
+            {
+            0.00f,
+            0.72f,
+            0.90f,
+            1.00f
+            },
+            mode: SKShaderTileMode.Clamp);
+
+        using var edgePaint = new SKPaint
+        {
+            IsAntialias = true,
+            Shader = edgeShader,
+            BlendMode = SKBlendMode.Multiply,
+            FilterQuality = SKFilterQuality.High,
+        };
+
+        canvas.DrawCircle(cx, cy, radius, edgePaint);
+
+
+        // =========================================================
+        // PRIMARY SPHERICAL HIGHLIGHT
+        // Large soft directional lighting from upper-left.
+        // Offset highlight center is CRITICAL for 3D appearance.
+        // =========================================================
+
+        using var highlightShader = SKShader.CreateRadialGradient(
+            center: new SKPoint(
+                cx - radius * 0.28f,
+                cy - radius * 0.42f),
+            radius: radius * 0.99f,
+            colors: new[]
+            {
+            new SKColor(255, 255, 255, 38),
+            new SKColor(180, 220, 255, 18),
+            SKColors.Transparent
+            },
+            colorPos: new[]
+            {
+            0.00f,
+            0.35f,
+            1.00f
+            },
+            mode: SKShaderTileMode.Clamp);
+
+        using var highlightPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Shader = highlightShader,
+            BlendMode = SKBlendMode.Screen,
+            FilterQuality = SKFilterQuality.High,
+
+            // Tiny blur removes gradient harshness
+            ImageFilter = SKImageFilter.CreateBlur(1.2f, 1.2f)
+        };
+
+        canvas.DrawCircle(cx, cy, radius, highlightPaint);
+
+
+        // =========================================================
+        // SECONDARY AMBIENT LIGHT
+        // Very subtle atmospheric lift across upper hemisphere.
+        // Prevents the center from feeling hollow or flat.
+        // =========================================================
+
+        using var ambientShader = SKShader.CreateLinearGradient(
+            new SKPoint(cx, cy - radius),
+            new SKPoint(cx, cy + radius),
             new[]
             {
-                SKColors.Transparent, SKColors.Transparent,
-                new SKColor(0, 0, 0, 70),
-                new SKColor(0, 0, 0, 160),
+            new SKColor(255, 255, 255, 14),
+            SKColors.Transparent,
+            new SKColor(0, 0, 0, 25),
             },
-            new[] { 0f, 0.68f, 0.86f, 1.0f },
+            new[]
+            {
+            0.0f,
+            0.45f,
+            1.0f
+            },
             SKShaderTileMode.Clamp);
-        using var vigPaint = new SKPaint { IsAntialias = true, Shader = vigShader };
-        canvas.DrawCircle(cx, cy, br, vigPaint);
 
-        using var specShader = SKShader.CreateRadialGradient(
-            new SKPoint(cx - br * 0.12f, cy - br * 0.52f), br * 0.68f,
-            new[] { new SKColor(0xFF, 0xFF, 0xFF, 22), SKColors.Transparent },
-            null, SKShaderTileMode.Clamp);
-        using var specPaint = new SKPaint { IsAntialias = true, Shader = specShader };
-        canvas.DrawCircle(cx, cy, br, specPaint);
+        using var ambientPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Shader = ambientShader,
+            BlendMode = SKBlendMode.SoftLight,
+        };
+
+        canvas.DrawCircle(cx, cy, radius, ambientPaint);
+
+
+        // =========================================================
+        // FRESNEL RIM
+        // Extremely subtle edge reflection.
+        // If this becomes visibly "ring-like", reduce alpha.
+        // =========================================================
+
+        using var rimPaint = new SKPaint
+        {
+            IsAntialias = true,
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = radius * 0.008f,
+            Color = new SKColor(255, 255, 255, 18),
+            BlendMode = SKBlendMode.Screen
+        };
+
+        canvas.DrawCircle(cx, cy, radius - rimPaint.StrokeWidth, rimPaint);
     }
 
     public static void DrawRollScale(SKCanvas canvas, float cx, float cy, float R, float br)

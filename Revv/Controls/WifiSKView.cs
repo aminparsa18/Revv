@@ -2,7 +2,7 @@ using SkiaSharp;
 using SkiaSharp.Views.Maui;
 using SkiaSharp.Views.Maui.Controls;
 
-namespace Revv;
+namespace Revv.Controls;
 
 // WiFi signal indicator drawn as three concentric arcs + center dot.
 // Level 0 = no signal / disabled, 1-3 = progressively stronger.
@@ -44,17 +44,17 @@ public sealed class WifiSKView : SKCanvasView
         float cy = (H + r3) / 2f;
 
         bool unknown = _level < 0;
-        var  active  = new SKColor(0x00, 0xE8, 0x7A);   // ConnectedGreen
-        var  dim     = new SKColor(0x28, 0x28, 0x28);   // SurfaceHigh-ish
+        SKColor active  = new(0x00, 0xE8, 0x7A);   // ConnectedGreen
+        SKColor dim     = new(0x28, 0x28, 0x28);   // SurfaceHigh-ish
 
-        using var arcPaint = new SKPaint
+        using SKPaint arcPaint = new()
         {
             IsAntialias = true,
             Style       = SKPaintStyle.Stroke,
             StrokeCap   = SKStrokeCap.Round,
             StrokeWidth = strokeW,
         };
-        using var dotPaint = new SKPaint { IsAntialias = true };
+        using SKPaint dotPaint = new() { IsAntialias = true };
 
         arcPaint.Color = (!unknown && _level >= 3) ? active : dim;
         DrawArc(canvas, cx, cy, r3, arcPaint);

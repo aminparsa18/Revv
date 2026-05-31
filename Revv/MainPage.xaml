@@ -3,7 +3,7 @@
     x:Class="Revv.MainPage"
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-    xmlns:local="clr-namespace:Revv"
+    xmlns:controls="clr-namespace:Revv.Controls"
     BackgroundColor="#0A0A0A"
     Shell.NavBarIsVisible="False">
 
@@ -51,15 +51,18 @@
             Padding="20,12,12,8"
             ColumnSpacing="12">
 
-                <Frame
+                <Border
                 Grid.Column="1"
                 Padding="10,4"
                 BackgroundColor="{StaticResource Surface}"
-                BorderColor="{StaticResource SurfaceBorder}"
-                CornerRadius="12"
-                 Margin="0,12,0,0"
+                Margin="0,12,0,0"
                 HorizontalOptions="Center"
-                VerticalOptions="Center">
+                VerticalOptions="Center"
+                StrokeThickness="1"
+                Stroke="{StaticResource SurfaceBorder}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
                     <HorizontalStackLayout Spacing="7">
                         <Ellipse
                         x:Name="StatusDot"
@@ -75,7 +78,7 @@
                         TextColor="{StaticResource TextMuted}"
                         VerticalOptions="Center" />
                     </HorizontalStackLayout>
-                </Frame>
+                </Border>
 
                 <Grid
                 x:Name="PedalsToggle"
@@ -188,7 +191,7 @@
                             PointerReleased="OnBrakeReleased" />
                         </Grid.GestureRecognizers>
 
-                        <local:PedalSKView
+                      <controls:PedalSKView
                         x:Name="BrakePedalView"
                         Grid.Row="1"
                         HorizontalOptions="Fill"
@@ -207,7 +210,7 @@
                         Spacing="8"
                         VerticalOptions="Center">
 
-                            <local:AttitudeSKView
+                         <controls:AttitudeSKView
                             x:Name="AttitudeView"
                             HeightRequest="240"
                             HorizontalOptions="Center"
@@ -241,7 +244,7 @@
                         </Grid>
                     </Grid>
 
-                        <local:FaceButtonsSKView
+                        <controls:FaceButtonsSKView
                             x:Name="FaceButtons"
                             WidthRequest="94"
                             HeightRequest="94"
@@ -253,7 +256,7 @@
                             ButtonPressed="OnFaceButtonPressed"
                             ButtonReleased="OnFaceButtonReleased" />
 
-                        <local:RecenterSKView
+                        <controls:RecenterSKView
                             x:Name="RecenterButton"
                             Grid.Column="2"
                             Margin="16,32,0,6"
@@ -272,11 +275,11 @@
                                VerticalOptions="Start">
 
                             <VerticalStackLayout
-                               Spacing="24"
+                               Spacing="6"
                                VerticalOptions="Center">
 
                                 <VerticalStackLayout Spacing="10">
-                                    <Grid ColumnDefinitions="*,Auto">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
                                         <Label
                            Grid.Column="0"
                            FontSize="11"
@@ -290,6 +293,13 @@
                            Style="{StaticResource LabelMono}"
                            Text="1.0"
                            TextColor="{StaticResource AccentRed}" />
+                                        <controls:HelpSKView
+                           Grid.Column="2"
+                           Clicked="OnSensitivityHelp"
+                           HeightRequest="16"
+                           Margin="6,0,0,0"
+                           VerticalOptions="Center"
+                           WidthRequest="16" />
                                     </Grid>
                                     <Slider
                        x:Name="SensitivitySlider"
@@ -301,7 +311,7 @@
                                 </VerticalStackLayout>
 
                                 <VerticalStackLayout Spacing="10">
-                                    <Grid ColumnDefinitions="*,Auto">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
                                         <Label
                            Grid.Column="0"
                            FontSize="11"
@@ -315,6 +325,13 @@
                            Style="{StaticResource LabelMono}"
                            Text="45°"
                            TextColor="{StaticResource AccentRed}" />
+                                        <controls:HelpSKView
+                           Grid.Column="2"
+                           Clicked="OnRangeHelp"
+                           HeightRequest="16"
+                           Margin="6,0,0,0"
+                           VerticalOptions="Center"
+                           WidthRequest="16" />
                                     </Grid>
                                     <Slider
                        x:Name="RangeSlider"
@@ -325,9 +342,96 @@
                        ValueChanged="OnRangeChanged" />
                                 </VerticalStackLayout>
 
-                               
+                                <VerticalStackLayout Spacing="10">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
+                                        <Label
+                           Grid.Column="0"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="DEAD ZONE"
+                           TextColor="{StaticResource TextMuted}" />
+                                        <Label
+                           x:Name="DeadZoneValueLabel"
+                           Grid.Column="1"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="0.5°"
+                           TextColor="{StaticResource AccentRed}" />
+                                        <controls:HelpSKView
+                           Grid.Column="2"
+                           Clicked="OnDeadZoneHelp"
+                           HeightRequest="16"
+                           Margin="6,0,0,0"
+                           VerticalOptions="Center"
+                           WidthRequest="16" />
+                                    </Grid>
+                                    <Slider
+                       x:Name="DeadZoneSlider"
+                       Maximum="5.0"
+                       Minimum="0.0"
+                       Style="{StaticResource SliderStyle}"
+                       Value="0.5"
+                       ValueChanged="OnDeadZoneChanged" />
+                                </VerticalStackLayout>
+
+                                <VerticalStackLayout Spacing="10">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
+                                        <Label
+                           Grid.Column="0"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="AUTO-CENTER"
+                           TextColor="{StaticResource TextMuted}" />
+                                        <Label
+                           x:Name="CenterAssistValueLabel"
+                           Grid.Column="1"
+                           FontSize="11"
+                           Style="{StaticResource LabelMono}"
+                           Text="2%"
+                           TextColor="{StaticResource AccentRed}" />
+                                        <controls:HelpSKView
+                           Grid.Column="2"
+                           Clicked="OnCenterAssistHelp"
+                           HeightRequest="16"
+                           Margin="6,0,0,0"
+                           VerticalOptions="Center"
+                           WidthRequest="16" />
+                                    </Grid>
+                                    <Slider
+                       x:Name="CenterAssistSlider"
+                       Maximum="10"
+                       Minimum="0"
+                       Style="{StaticResource SliderStyle}"
+                       Value="2"
+                       ValueChanged="OnCenterAssistChanged" />
+                                </VerticalStackLayout>
 
                             </VerticalStackLayout>
+
+                            <!-- Tooltip popover — fades in over slider content on ? tap -->
+                            <Border
+                                x:Name="TooltipBorder"
+                                BackgroundColor="#1C1C1C"
+                                HorizontalOptions="Fill"
+                                IsVisible="False"
+                                Margin="0,8"
+                                Padding="14,10"
+                                Stroke="{StaticResource SurfaceBorder}"
+                                StrokeThickness="1"
+                                VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8" />
+                                </Border.StrokeShape>
+                                <Label
+                                    x:Name="TooltipLabel"
+                                    FontSize="11"
+                                    LineBreakMode="WordWrap"
+                                    Style="{StaticResource LabelMono}"
+                                    TextColor="{StaticResource TextPrimary}" />
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnTooltipDismissed" />
+                                </Border.GestureRecognizers>
+                            </Border>
                         </Grid>
                     
                         <!-- ─────────────────────────────────────────────── -->
@@ -346,17 +450,17 @@
                             PointerReleased="OnThrottleReleased" />
                         </Grid.GestureRecognizers>
 
-                        <local:PedalSKView
+                       <controls:PedalSKView
                             x:Name="ThrottlePedalView"
                             Grid.Row="1"
                             HorizontalOptions="Fill"
                             InputTransparent="True"
-                            Type="{x:Static local:PedalType.Throttle}"
+                            Type="{x:Static controls:PedalType.Throttle}"
                             Margin="0,0,0,24"
                             VerticalOptions="Fill" />
                     </Grid>
                     <!-- Battery -->
-                    <local:BatterySKView
+                    <controls:BatterySKView
                          x:Name="BatteryGauge"
                          WidthRequest="80"
                          Grid.ColumnSpan="2"
@@ -368,7 +472,7 @@
  
 
                         <!-- Signal -->
-                    <local:WifiSKView
+                    <controls:WifiSKView
                          x:Name="WifiView"
                          HeightRequest="48"
                          WidthRequest="48"
@@ -426,7 +530,7 @@
         <!-- ═══════════════════════════════════════════════════════ -->
         <!-- Cluster frame overlay — SkiaSharp, drawn on top         -->
         <!-- ═══════════════════════════════════════════════════════ -->
-        <local:ClusterFrameSKView
+        <controls:ClusterFrameSKView
             Grid.ColumnSpan="2"
             HorizontalOptions="Fill"
             InputTransparent="True"
