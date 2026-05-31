@@ -4,6 +4,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:controls="clr-namespace:Revv.Controls"
+    xmlns:tour="clr-namespace:MarketAlly.SpotlightTour.Maui;assembly=MarketAlly.SpotlightTour.Maui"
     BackgroundColor="#0A0A0A"
     Shell.NavBarIsVisible="False">
 
@@ -52,6 +53,7 @@
             ColumnSpacing="12">
 
                 <Border
+                x:Name="StatusBorder"
                 Grid.Column="1"
                 Padding="10,4"
                 BackgroundColor="{StaticResource Surface}"
@@ -59,7 +61,14 @@
                 HorizontalOptions="Center"
                 VerticalOptions="Center"
                 StrokeThickness="1"
-                Stroke="{StaticResource SurfaceBorder}">
+                Stroke="{StaticResource SurfaceBorder}"
+                tour:Onboarding.StepKey="status"
+                tour:Onboarding.Title="CONNECTION STATUS"
+                tour:Onboarding.Description="REVV broadcasts over Wi-Fi. The pill turns green when your PC app finds this phone — no manual IP entry needed."
+                tour:Onboarding.Order="1"
+                tour:Onboarding.SpotlightShape="RoundedRectangle"
+                tour:Onboarding.SpotlightCornerRadius="12"
+                tour:Onboarding.SpotlightPadding="8">
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="12" />
                     </Border.StrokeShape>
@@ -87,7 +96,14 @@
                 HorizontalOptions="End"
                 Margin="0,12,72,0"
                 VerticalOptions="Center"
-                WidthRequest="56">
+                WidthRequest="56"
+                tour:Onboarding.StepKey="pedals"
+                tour:Onboarding.Title="PEDAL MODE"
+                tour:Onboarding.Description="Swap joysticks for brake and throttle. Tap-and-hold either pedal at full travel — release to zero."
+                tour:Onboarding.Order="4"
+                tour:Onboarding.SpotlightShape="RoundedRectangle"
+                tour:Onboarding.SpotlightCornerRadius="14"
+                tour:Onboarding.SpotlightPadding="6">
 
                     <Border
                     x:Name="PedalsTrack"
@@ -143,7 +159,13 @@
                         HeightRequest="22"
                         Source="settings.png"
                         VerticalOptions="Center"
-                        WidthRequest="22" />
+                        WidthRequest="22"
+                        tour:Onboarding.StepKey="settings"
+                        tour:Onboarding.Title="TUNING"
+                        tour:Onboarding.Description="Dial in sensitivity, steering range, dead zone, and auto-center spring strength."
+                        tour:Onboarding.Order="5"
+                        tour:Onboarding.SpotlightShape="Circle"
+                        tour:Onboarding.SpotlightPadding="12" />
                     <ImageButton
                          x:Name="PauseButton"
                          Grid.Column="1"
@@ -227,7 +249,13 @@
                             HeightRequest="240"
                             HorizontalOptions="Center"
                             InputTransparent="True"
-                            WidthRequest="240" />
+                            WidthRequest="240"
+                            tour:Onboarding.StepKey="steering"
+                            tour:Onboarding.Title="TILT TO STEER"
+                            tour:Onboarding.Description="Rotate your phone like a steering wheel. The gyroscope drives Left Stick X on the virtual gamepad — no per-game setup needed."
+                            tour:Onboarding.Order="2"
+                            tour:Onboarding.SpotlightShape="Circle"
+                            tour:Onboarding.SpotlightPadding="10" />
 
                             <!-- Angle readout below circle -->
                             <Label
@@ -274,7 +302,13 @@
                             HeightRequest="48"
                             WidthRequest="48"
                             HorizontalOptions="Start"
-                            Clicked="OnRecenterClicked" />
+                            Clicked="OnRecenterClicked"
+                            tour:Onboarding.StepKey="recenter"
+                            tour:Onboarding.Title="RECENTER"
+                            tour:Onboarding.Description="Snaps the steering angle to zero. Also works with a double-tap anywhere on the attitude indicator."
+                            tour:Onboarding.Order="3"
+                            tour:Onboarding.SpotlightShape="Circle"
+                            tour:Onboarding.SpotlightPadding="10" />
 
                         <!-- ─────────────────────────────────────────────── -->
                         <!-- RIGHT STICK JOYSTICK — default game mode control -->
@@ -558,6 +592,82 @@
             HorizontalOptions="Fill"
             InputTransparent="True"
             VerticalOptions="Fill"/>
+
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <!-- First-time tour overlay — must be last child to be on top -->
+        <!-- ═══════════════════════════════════════════════════════ -->
+        <tour:OnboardingHost
+            x:Name="TourHost"
+            Grid.ColumnSpan="2"
+            Theme="Dark"
+            DimOpacity="0.85"
+            DimColor="Black"
+            CalloutPositionMode="AutoCorner"
+            ShowCornerNavigator="True"
+            CornerNavigatorPlacement="Auto"
+            ShowSkipButton="True"
+            AnimationsEnabled="True">
+
+            <tour:OnboardingHost.IntroView>
+                <Border
+                    BackgroundColor="#141414"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Center"
+                    Padding="32,36"
+                    Stroke="#2A2A2A"
+                    StrokeThickness="1"
+                    WidthRequest="290">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="20">
+                        <Label
+                            Text="REVV"
+                            FontFamily="RobotoMono"
+                            FontSize="40"
+                            FontAttributes="Bold"
+                            TextColor="#E8001D"
+                            HorizontalOptions="Center" />
+                        <Label
+                            Text="QUICK TOUR"
+                            FontFamily="RobotoMono"
+                            FontSize="11"
+                            TextColor="#555555"
+                            HorizontalOptions="Center"
+                            CharacterSpacing="3" />
+                        <BoxView HeightRequest="1" BackgroundColor="#2A2A2A" />
+                        <Label
+                            Text="5 steps. Less than a minute."
+                            FontFamily="RobotoMono"
+                            FontSize="13"
+                            TextColor="#F0F0F0"
+                            HorizontalOptions="Center"
+                            HorizontalTextAlignment="Center" />
+                        <Button
+                            Text="LET'S GO"
+                            BackgroundColor="#E8001D"
+                            TextColor="#F0F0F0"
+                            FontFamily="RobotoMono"
+                            FontSize="13"
+                            CornerRadius="8"
+                            HeightRequest="44"
+                            Clicked="OnTourIntroStart" />
+                        <Button
+                            Text="SKIP"
+                            BackgroundColor="Transparent"
+                            TextColor="#555555"
+                            FontFamily="RobotoMono"
+                            FontSize="11"
+                            CornerRadius="8"
+                            HeightRequest="36"
+                            BorderColor="#2A2A2A"
+                            BorderWidth="1"
+                            Clicked="OnTourIntroSkip" />
+                    </VerticalStackLayout>
+                </Border>
+            </tour:OnboardingHost.IntroView>
+
+        </tour:OnboardingHost>
 
     </Grid>
     <!-- end outer overlay Grid -->

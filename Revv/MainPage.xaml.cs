@@ -21,6 +21,8 @@ public partial class MainPage : ContentPage
     private CancellationTokenSource? _pulseCts;
     private long _lastUiUpdateMs;
 
+    private const string TourShownKey = "tour_v1_shown";
+
 #if ANDROID
     private Android.Net.Wifi.WifiManager? _wifiManager;
     private System.Timers.Timer? _wifiTimer;
@@ -63,6 +65,13 @@ public partial class MainPage : ContentPage
         catch (Exception ex)
         {
             StatusLabel.Text = $"NET ERR: {ex.Message[..Math.Min(ex.Message.Length, 20)]}";
+        }
+
+        if (!Preferences.Default.Get(TourShownKey, false))
+        {
+            Preferences.Default.Set(TourShownKey, true);
+            await Task.Delay(700);
+            await TourHost.StartTourWithIntroAsync(this.Content);
         }
     }
 
@@ -563,4 +572,12 @@ public partial class MainPage : ContentPage
     }
 
     private void ResetThrottleVisual() => ThrottlePedalView.SetPressed(false);
+
+    // -------------------------------------------------------------------------
+    // Tour intro handlers
+    // -------------------------------------------------------------------------
+
+    private async void OnTourIntroStart(object? sender, EventArgs e) => await TourHost.DismissIntroAsync();
+
+    private void OnTourIntroSkip(object? sender, EventArgs e) => TourHost.SkipTour();
 }
