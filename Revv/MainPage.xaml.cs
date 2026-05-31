@@ -41,7 +41,9 @@ public partial class MainPage : ContentPage
         DeviceDisplay.Current.KeepScreenOn = true;
         RefreshBattery();
         Battery.Default.BatteryInfoChanged += OnBatteryInfoChanged;
-        StartStatusPulse();
+
+        // Clear any stale error or connected state from before background/screen-off.
+        SetConnectedState(false);
         StartWifiPolling();
 
         try
@@ -83,7 +85,8 @@ public partial class MainPage : ContentPage
     {
         _steering.SteeringChanged += (_, value) =>
         {
-            _broadcaster.SetSteering(value);
+            if (_pedalsEnabled)
+                _broadcaster.SetSteering(value);
 
             // Throttle UI repaints to ~60 fps. Broadcaster always gets data at full sensor rate.
             long now = System.Environment.TickCount64;
@@ -196,6 +199,9 @@ public partial class MainPage : ContentPage
             LatencyValue.Text = "—";
             LatencyValue.TextColor = Color.FromArgb("#555555");
             StartStatusPulse();
+
+            _broadcaster.SetRightStick(0f, 0f);
+            _broadcaster.SetLeftStick(0f, 0f);
 
             if (_pedalsEnabled)
             {
@@ -427,6 +433,12 @@ public partial class MainPage : ContentPage
         AttitudePanel.IsVisible = true;
     }
 
+    private void OnJoystickChanged(object? sender, (float X, float Y) value)
+        => _broadcaster.SetRightStick(value.X, value.Y);
+
+    private void OnLeftJoystickChanged(object? sender, (float X, float Y) value)
+        => _broadcaster.SetLeftStick(value.X, value.Y);
+
     private void OnFaceButtonPressed(object? sender, FaceButton button)
         => _broadcaster.SetButton(ToMask(button), true);
 
@@ -452,9 +464,13 @@ public partial class MainPage : ContentPage
 
         if (_pedalsEnabled)
         {
+            // Pedals mode ON: hide joystick, reveal throttle + brake + face buttons
             PedalsTrack.BackgroundColor = Color.FromArgb("#3A0008");
             PedalsTrack.Stroke          = Color.FromArgb("#E8001D");
             PedalsThumb.BackgroundColor = Color.FromArgb("#E8001D");
+
+            _broadcaster.SetRightStick(0f, 0f);
+            _broadcaster.SetLeftStick(0f, 0f);
 
             BrakePanel.TranslationX    = -80;
             ThrottlePanel.TranslationX =  80;
@@ -462,9 +478,6 @@ public partial class MainPage : ContentPage
             ThrottlePanel.Opacity      = 0;
             BrakePanel.IsVisible       = true;
             ThrottlePanel.IsVisible    = true;
-            FaceButtons.TranslationY   = -80;
-            FaceButtons.Opacity        = 0;
-            FaceButtons.IsVisible      = true;
 
             await Task.WhenAll(
                 PedalsThumb.TranslateToAsync(28, 0, 500, Easing.SpringOut),
@@ -472,17 +485,27 @@ public partial class MainPage : ContentPage
                 ThrottlePanel.TranslateToAsync(0, 0, 380, Easing.SpringOut),
                 BrakePanel.FadeToAsync(1, 250),
                 ThrottlePanel.FadeToAsync(1, 250),
-                FaceButtons.TranslateToAsync(0, 0, 380, Easing.SpringOut),
-                FaceButtons.FadeToAsync(1, 250)
+                JoystickView.FadeToAsync(0, 200),
+                LeftJoystickView.FadeToAsync(0, 200)
             );
+
+            JoystickView.IsVisible     = false;
+            LeftJoystickView.IsVisible = false;
         }
         else
         {
+            // Pedals mode OFF: hide throttle + brake + face buttons, reveal joystick
+            _broadcaster.SetSteering(0f);
             _broadcaster.SetThrottle(0f);
             _broadcaster.SetBrake(0f);
             PedalsTrack.BackgroundColor = Color.FromArgb("#1F1F1F");
             PedalsTrack.Stroke          = Color.FromArgb("#2A2A2A");
             PedalsThumb.BackgroundColor = Color.FromArgb("#555555");
+
+            JoystickView.Opacity       = 0;
+            JoystickView.IsVisible     = true;
+            LeftJoystickView.Opacity   = 0;
+            LeftJoystickView.IsVisible = true;
 
             await Task.WhenAll(
                 PedalsThumb.TranslateToAsync(0, 0, 500, Easing.SpringOut),
@@ -490,8 +513,8 @@ public partial class MainPage : ContentPage
                 ThrottlePanel.TranslateToAsync(80, 0, 220, Easing.CubicIn),
                 BrakePanel.FadeToAsync(0, 180),
                 ThrottlePanel.FadeToAsync(0, 180),
-                FaceButtons.TranslateToAsync(0, -80, 220, Easing.CubicIn),
-                FaceButtons.FadeToAsync(0, 180)
+                JoystickView.FadeToAsync(1, 280),
+                LeftJoystickView.FadeToAsync(1, 280)
             );
 
             BrakePanel.IsVisible       = false;
@@ -500,9 +523,6 @@ public partial class MainPage : ContentPage
             ThrottlePanel.TranslationX = 0;
             BrakePanel.Opacity         = 1;
             ThrottlePanel.Opacity      = 1;
-            FaceButtons.IsVisible      = false;
-            FaceButtons.TranslationY   = 0;
-            FaceButtons.Opacity        = 1;
         }
     }
 

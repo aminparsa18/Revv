@@ -23,10 +23,14 @@ public class RevvBroadcaster : IAsyncDisposable
     private UdpClient? _echoListener;
     private UdpClient? _rumbleListener;
     private CancellationTokenSource? _cts;
-    private float  _latestSteering = 0f;
-    private float  _latestThrottle = 0f;
-    private float  _latestBrake    = 0f;
-    private ushort _latestButtons  = 0;
+    private float  _latestSteering     = 0f;
+    private float  _latestThrottle     = 0f;
+    private float  _latestBrake        = 0f;
+    private ushort _latestButtons      = 0;
+    private float  _latestRightStickX  = 0f;
+    private float  _latestRightStickY  = 0f;
+    private float  _latestLeftStickX   = 0f;
+    private float  _latestLeftStickY   = 0f;
     private readonly object _steeringLock = new();
     private float _smoothedLatencyMs = -1f;
     private long _lastLatencyFireMs = 0;
@@ -36,9 +40,13 @@ public class RevvBroadcaster : IAsyncDisposable
 
     public Task StartAsync()
     {
-        if (State != BroadcasterState.Idle) return Task.CompletedTask;
-
+        // Cancel any in-flight session first (handles OnDisappearing/OnAppearing overlap).
+        var oldCts = _cts;
+        oldCts?.Cancel();
         _cts = new CancellationTokenSource();
+        Cleanup();
+        State = BroadcasterState.Idle;
+
         _ = EnterDiscoveryAsync(_cts.Token);
         return Task.CompletedTask;
     }
@@ -61,6 +69,24 @@ public class RevvBroadcaster : IAsyncDisposable
             _latestBrake = Math.Clamp(value, 0f, 1f);
     }
 
+    public void SetRightStick(float x, float y)
+    {
+        lock (_steeringLock)
+        {
+            _latestRightStickX = Math.Clamp(x, -1f, 1f);
+            _latestRightStickY = Math.Clamp(y, -1f, 1f);
+        }
+    }
+
+    public void SetLeftStick(float x, float y)
+    {
+        lock (_steeringLock)
+        {
+            _latestLeftStickX = Math.Clamp(x, -1f, 1f);
+            _latestLeftStickY = Math.Clamp(y, -1f, 1f);
+        }
+    }
+
     public void SetButton(RevvButtonMask button, bool pressed)
     {
         lock (_steeringLock)
@@ -74,10 +100,15 @@ public class RevvBroadcaster : IAsyncDisposable
 
     public async Task StopAsync()
     {
-        _cts?.Cancel();
+        var cts = _cts;
+        cts?.Cancel();
         await Task.Delay(100);
-        Cleanup();
-        State = BroadcasterState.Idle;
+        // Only finalize cleanup if StartAsync hasn't already replaced the session.
+        if (ReferenceEquals(_cts, cts))
+        {
+            Cleanup();
+            State = BroadcasterState.Idle;
+        }
     }
 
     private async Task EnterDiscoveryAsync(CancellationToken ct)
@@ -110,7 +141,11 @@ public class RevvBroadcaster : IAsyncDisposable
                 }
             }
             catch (OperationCanceledException) { }
-            catch (Exception ex) { ErrorOccurred?.Invoke(this, ex); }
+            catch (Exception ex)
+            {
+                if (!ct.IsCancellationRequested)
+                    ErrorOccurred?.Invoke(this, ex);
+            }
         }, ct);
 
         try
@@ -131,7 +166,11 @@ public class RevvBroadcaster : IAsyncDisposable
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { ErrorOccurred?.Invoke(this, ex); }
+        catch (Exception ex)
+        {
+            if (!ct.IsCancellationRequested)
+                ErrorOccurred?.Invoke(this, ex);
+        }
     }
 
     private async Task EnterStreamingAsync(string pcIp, CancellationToken ct)
@@ -169,7 +208,7 @@ public class RevvBroadcaster : IAsyncDisposable
         {
             while (!ct.IsCancellationRequested)
             {
-                float steering, throttle, brake;
+                float steering, throttle, brake, rightX, rightY, leftX, leftY;
                 ushort buttons;
                 lock (_steeringLock)
                 {
@@ -177,10 +216,14 @@ public class RevvBroadcaster : IAsyncDisposable
                     throttle = _latestThrottle;
                     brake    = _latestBrake;
                     buttons  = _latestButtons;
+                    rightX   = _latestRightStickX;
+                    rightY   = _latestRightStickY;
+                    leftX    = _latestLeftStickX;
+                    leftY    = _latestLeftStickY;
                 }
 
                 var tick = (uint)(Environment.TickCount64 & 0xFFFFFFFFL);
-                var packet = new RevvPacket(steering, throttle, brake, tick, buttons).ToBytes();
+                var packet = new RevvPacket(steering, throttle, brake, tick, buttons, rightX, rightY, leftX, leftY).ToBytes();
                 await _streamer.SendAsync(packet, packet.Length, pcEndpoint);
                 await Task.Delay(intervalMs, ct);
 
@@ -198,8 +241,9 @@ public class RevvBroadcaster : IAsyncDisposable
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            ErrorOccurred?.Invoke(this, ex);
             lostConnection = !ct.IsCancellationRequested;
+            if (lostConnection)
+                ErrorOccurred?.Invoke(this, ex);
         }
 
         if (lostConnection)

@@ -29,10 +29,14 @@ public class RevvGamepad : IDisposable
     private bool _disposed = false;
 
     // Latest values received from phone — written by network thread, read by render timer
-    private volatile float  _targetSteering = 0f;
-    private volatile float  _targetThrottle = 0f;
-    private volatile float  _targetBrake    = 0f;
-    private volatile ushort _targetButtons  = 0;
+    private volatile float  _targetSteering     = 0f;
+    private volatile float  _targetThrottle     = 0f;
+    private volatile float  _targetBrake        = 0f;
+    private volatile ushort _targetButtons      = 0;
+    private volatile float  _targetRightStickX  = 0f;
+    private volatile float  _targetRightStickY  = 0f;
+    private volatile float  _targetLeftStickX   = 0f;
+    private volatile float  _targetLeftStickY   = 0f;
 
     // 200 Hz render loop: dedicated thread with sleep+spin for deterministic timing
     private Thread? _renderThread;
@@ -52,10 +56,14 @@ public class RevvGamepad : IDisposable
     public void UpdateSpeed(float speedMs) => _speedMs = MathF.Max(0f, speedMs);
 
     // Last values actually submitted to ViGEm — skip report when unchanged
-    private short  _lastSteerShort   = short.MinValue; // sentinel forces first submit
-    private byte   _lastThrottleByte = 0;
-    private byte   _lastBrakeByte    = 0;
-    private ushort _lastButtons      = 0;
+    private short  _lastSteerShort        = short.MinValue; // sentinel forces first submit
+    private byte   _lastThrottleByte      = 0;
+    private byte   _lastBrakeByte         = 0;
+    private ushort _lastButtons           = 0;
+    private short  _lastRightStickXShort  = 0;
+    private short  _lastRightStickYShort  = 0;
+    private short  _lastLeftStickXShort   = 0;
+    private short  _lastLeftStickYShort   = 0;
 
     public void Connect()
     {
@@ -153,6 +161,28 @@ public class RevvGamepad : IDisposable
         _targetBrake = Math.Clamp(normalizedValue, 0f, 1f);
     }
 
+    public void SetRightStick(float x, float y)
+    {
+        if (!IsConnected)
+        {
+            return;
+        }
+
+        _targetRightStickX = Math.Clamp(x, -1f, 1f);
+        _targetRightStickY = Math.Clamp(y, -1f, 1f);
+    }
+
+    public void SetLeftStick(float x, float y)
+    {
+        if (!IsConnected)
+        {
+            return;
+        }
+
+        _targetLeftStickX = Math.Clamp(x, -1f, 1f);
+        _targetLeftStickY = Math.Clamp(y, -1f, 1f);
+    }
+
     public void SetButtons(ushort buttons)
     {
         if (!IsConnected)
@@ -165,23 +195,30 @@ public class RevvGamepad : IDisposable
 
     public void ZeroAllInputs()
     {
-        _targetSteering = 0f;
-        _targetThrottle = 0f;
-        _targetBrake    = 0f;
-        _targetButtons  = 0;
-        CurrentSteering = 0f;
-        CurrentThrottle = 0f;
-        CurrentBrake    = 0f;
-        _steeringVelocity = 0f;
+        _targetSteering    = 0f;
+        _targetThrottle    = 0f;
+        _targetBrake       = 0f;
+        _targetButtons     = 0;
+        _targetRightStickX = 0f;
+        _targetRightStickY = 0f;
+        _targetLeftStickX  = 0f;
+        _targetLeftStickY  = 0f;
+        CurrentSteering    = 0f;
+        CurrentThrottle    = 0f;
+        CurrentBrake       = 0f;
+        _steeringVelocity  = 0f;
 
         if (!IsConnected || _controller is null)
         {
             return;
         }
 
-        _controller.SetAxisValue(Xbox360Axis.LeftThumbX, 0);
+        _controller.SetAxisValue(Xbox360Axis.LeftThumbX,  0);
+        _controller.SetAxisValue(Xbox360Axis.LeftThumbY,  0);
+        _controller.SetAxisValue(Xbox360Axis.RightThumbX, 0);
+        _controller.SetAxisValue(Xbox360Axis.RightThumbY, 0);
         _controller.SetSliderValue(Xbox360Slider.RightTrigger, 0);
-        _controller.SetSliderValue(Xbox360Slider.LeftTrigger, 0);
+        _controller.SetSliderValue(Xbox360Slider.LeftTrigger,  0);
         _controller.SetButtonState(Xbox360Button.A,     false);
         _controller.SetButtonState(Xbox360Button.B,     false);
         _controller.SetButtonState(Xbox360Button.X,     false);
@@ -258,26 +295,40 @@ public class RevvGamepad : IDisposable
         float speedScale = 1f / (1f + (_speedMs * SpeedSensitivity));
         steerOut *= speedScale;
 
-        short  steerShort    = (short)(-Math.Clamp(steerOut, -1f, 1f) * short.MaxValue);
-        byte   throttleByte  = (byte)(CurrentThrottle * 255f);
-        byte   brakeByte     = (byte)(CurrentBrake * 255f);
-        ushort buttons       = _targetButtons;
+        // Driving mode: steerOut drives LeftThumbX — negated to correct gyro axis convention
+        // Gaming mode:  _targetLeftStickX drives LeftThumbX — not negated (screen X = Xbox X)
+        // Gyro and joystick each carry their own sign; combine them cleanly
+        short  steerShort      = (short)(Math.Clamp(-steerOut + _targetLeftStickX, -1f, 1f) * short.MaxValue);
+        byte   throttleByte    = (byte)(CurrentThrottle * 255f);
+        byte   brakeByte       = (byte)(CurrentBrake * 255f);
+        ushort buttons         = _targetButtons;
+        short  rightXShort     = (short)( Math.Clamp(_targetRightStickX, -1f, 1f) * short.MaxValue);
+        short  rightYShort     = (short)(-Math.Clamp(_targetRightStickY, -1f, 1f) * short.MaxValue);
+        short  leftYShort      = (short)(-Math.Clamp(_targetLeftStickY,  -1f, 1f) * short.MaxValue);
 
         if (steerShort == _lastSteerShort && throttleByte == _lastThrottleByte
-            && brakeByte == _lastBrakeByte && buttons == _lastButtons)
+            && brakeByte == _lastBrakeByte && buttons == _lastButtons
+            && rightXShort == _lastRightStickXShort && rightYShort == _lastRightStickYShort
+            && leftYShort  == _lastLeftStickYShort)
         {
             return;
         }
 
-        _lastSteerShort   = steerShort;
-        _lastThrottleByte = throttleByte;
-        _lastBrakeByte    = brakeByte;
+        _lastSteerShort       = steerShort;
+        _lastThrottleByte     = throttleByte;
+        _lastBrakeByte        = brakeByte;
+        _lastRightStickXShort = rightXShort;
+        _lastRightStickYShort = rightYShort;
+        _lastLeftStickYShort  = leftYShort;
 
         try
         {
-            _controller.SetAxisValue(Xbox360Axis.LeftThumbX, steerShort);
+            _controller.SetAxisValue(Xbox360Axis.LeftThumbX,  steerShort);
+            _controller.SetAxisValue(Xbox360Axis.LeftThumbY,  leftYShort);
+            _controller.SetAxisValue(Xbox360Axis.RightThumbX, rightXShort);
+            _controller.SetAxisValue(Xbox360Axis.RightThumbY, rightYShort);
             _controller.SetSliderValue(Xbox360Slider.RightTrigger, throttleByte);
-            _controller.SetSliderValue(Xbox360Slider.LeftTrigger, brakeByte);
+            _controller.SetSliderValue(Xbox360Slider.LeftTrigger,  brakeByte);
 
             if (buttons != _lastButtons)
             {

@@ -25,9 +25,11 @@ public class RevvSession : IAsyncDisposable
         Receiver.PhoneConnected += OnPhoneConnected;
         Receiver.PhoneDisconnected += OnPhoneDisconnected;
         Receiver.SteeringReceived += OnSteeringReceived;
-        Receiver.ThrottleReceived += (_, v) => Gamepad.SetThrottle(v);
-        Receiver.BrakeReceived    += (_, v) => Gamepad.SetBrake(v);
-        Receiver.ButtonsReceived  += (_, b) => Gamepad.SetButtons(b);
+        Receiver.ThrottleReceived    += (_, v) => Gamepad.SetThrottle(v);
+        Receiver.BrakeReceived       += (_, v) => Gamepad.SetBrake(v);
+        Receiver.ButtonsReceived     += (_, b) => Gamepad.SetButtons(b);
+        Receiver.RightStickReceived += (_, rs) => Gamepad.SetRightStick(rs.X, rs.Y);
+        Receiver.LeftStickReceived  += (_, ls) => Gamepad.SetLeftStick(ls.X, ls.Y);
         Receiver.ErrorOccurred    += (_, ex) => ErrorOccurred?.Invoke(this, ex);
 
         State = SessionState.WaitingForPhone;

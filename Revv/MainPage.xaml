@@ -175,6 +175,18 @@
                 IsClippedToBounds="True">
 
                         <!-- ─────────────────────────────────────────────── -->
+                    <!-- LEFT STICK JOYSTICK — default game mode control  -->
+                    <!-- ─────────────────────────────────────────────── -->
+                        <controls:JoystickSKView
+                            x:Name="LeftJoystickView"
+                            Grid.Column="0"
+                            WidthRequest="130"
+                            HeightRequest="130"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"
+                            ValueChanged="OnLeftJoystickChanged" />
+
+                        <!-- ─────────────────────────────────────────────── -->
                     <!-- BRAKE PANEL                                      -->
                     <!-- ─────────────────────────────────────────────── -->
                     <Grid
@@ -252,7 +264,6 @@
                             Grid.Column="2"
                             Margin="-14,0,12,12"
                             HorizontalOptions="Start"
-                            IsVisible="False"
                             ButtonPressed="OnFaceButtonPressed"
                             ButtonReleased="OnFaceButtonReleased" />
 
@@ -263,7 +274,19 @@
                             HeightRequest="48"
                             WidthRequest="48"
                             HorizontalOptions="Start"
-                            Clicked="OnRecenterClicked" />  
+                            Clicked="OnRecenterClicked" />
+
+                        <!-- ─────────────────────────────────────────────── -->
+                        <!-- RIGHT STICK JOYSTICK — default game mode control -->
+                        <!-- ─────────────────────────────────────────────── -->
+                        <controls:JoystickSKView
+                            x:Name="JoystickView"
+                            Grid.Column="2"
+                            WidthRequest="130"
+                            HeightRequest="130"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"
+                            ValueChanged="OnJoystickChanged" />  
 
                         <!-- Settings panel — full-screen column, hidden by default -->
                         <Grid  Grid.Column="1"
